@@ -21,7 +21,7 @@
     "onCommand:timelad.showGitHistory",
     "onCommand:timelad.listCommits"
   ],
-  "main": "./extension.js",
+  "main": "./src/extension.js",
   "icon": "images/icon.svg",
   "contributes": {
     "commands": [
