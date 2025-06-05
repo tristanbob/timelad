@@ -65,7 +65,8 @@
       "timelad-sidebar-view": [
         {
           "id": "timelad-git-history",
-          "name": "Git History"
+          "name": "Git History",
+          "type": "webview"
         }
       ]
     }

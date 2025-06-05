@@ -4,17 +4,44 @@ const util = require("util");
 const execPromise = util.promisify(exec);
 
 /**
- * GitHistoryTreeDataProvider implements a TreeDataProvider for showing git commit history in a sidebar view
+ * GitHistoryWebviewProvider manages the webview for the sidebar
  */
-class GitHistoryTreeDataProvider {
-  constructor() {
-    this._onDidChangeTreeData = new vscode.EventEmitter();
-    this.onDidChangeTreeData = this._onDidChangeTreeData.event;
+class GitHistoryWebviewProvider {
+  constructor(context) {
+    this.context = context;
+    this.view = null;
     this.commits = [];
-    this.loading = false;
-    this.cache = new Map(); // Add caching for better performance
+    this.cache = new Map();
     this.cacheTimeout = 5 * 60 * 1000; // 5 minutes cache
-    this.refresh();
+  }
+
+  async resolveWebviewView(webviewView) {
+    this.view = webviewView;
+
+    webviewView.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [this.context.extensionUri],
+    };
+
+    // Load initial content
+    await this.refresh();
+
+    // Handle messages from the webview
+    webviewView.webview.onDidReceiveMessage(async (message) => {
+      if (message.command === "showCommit") {
+        const commit = this.commits.find((c) => c.hash === message.hash);
+        if (commit) {
+          try {
+            const repoPath = await getRepositoryPath();
+            await showCommitDetails(commit, repoPath);
+          } catch (error) {
+            vscode.window.showErrorMessage(`TimeLad: ${error.message}`);
+          }
+        }
+      } else if (message.command === "refresh") {
+        await this.refresh();
+      }
+    });
   }
 
   async getCommits() {
@@ -93,52 +120,285 @@ class GitHistoryTreeDataProvider {
   }
 
   async refresh() {
-    this.loading = true;
-    this._onDidChangeTreeData.fire();
+    if (!this.view) {
+      return;
+    }
 
     // Clear cache on manual refresh
     this.cache.clear();
 
+    // Show loading state
+    this.view.webview.html = this.getLoadingContent();
+
+    // Fetch commits
     this.commits = await this.getCommits();
-    this.loading = false;
-    this._onDidChangeTreeData.fire();
+
+    // Update webview with commit data
+    this.view.webview.html = this.getWebviewContent(this.commits);
   }
 
-  getTreeItem(element) {
-    if (element.label === "Loading...") {
-      const item = new vscode.TreeItem(
-        "Loading...",
-        vscode.TreeItemCollapsibleState.None
-      );
-      item.iconPath = new vscode.ThemeIcon("loading~spin");
-      return item;
-    }
-
-    const treeItem = new vscode.TreeItem(
-      `Version ${element.version}: ${element.subject}`,
-      vscode.TreeItemCollapsibleState.None
-    );
-    treeItem.description = `${element.author} - ${element.date}`;
-    treeItem.tooltip = `${element.subject}\nAuthor: ${element.author}\nDate: ${element.date}\nHash: ${element.hash}`;
-    treeItem.command = {
-      command: "timelad.showCommitDetails",
-      title: "Show Commit Details",
-      arguments: [element],
-    };
-    treeItem.iconPath = new vscode.ThemeIcon("git-commit");
-    return treeItem;
+  getLoadingContent() {
+    return `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>TimeLad: Git History</title>
+          <style>
+              body {
+                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+                  padding: 20px;
+                  color: var(--vscode-foreground);
+                  background-color: var(--vscode-editor-background);
+                  margin: 0;
+                  display: flex;
+                  justify-content: center;
+                  align-items: center;
+                  height: 100vh;
+                  flex-direction: column;
+              }
+              .loading {
+                  text-align: center;
+                  color: var(--vscode-descriptionForeground);
+              }
+              .spinner {
+                  width: 40px;
+                  height: 40px;
+                  border: 4px solid var(--vscode-editor-inactiveSelectionBackground);
+                  border-top: 4px solid var(--vscode-terminal-ansiBlue);
+                  border-radius: 50%;
+                  animation: spin 1s linear infinite;
+                  margin: 0 auto 20px;
+              }
+              @keyframes spin {
+                  0% { transform: rotate(0deg); }
+                  100% { transform: rotate(360deg); }
+              }
+          </style>
+      </head>
+      <body>
+          <div class="loading">
+              <div class="spinner"></div>
+              <p>Loading Git history...</p>
+          </div>
+      </body>
+      </html>
+    `;
   }
 
-  getChildren(element) {
-    if (this.loading) {
-      return [{ label: "Loading...", description: "" }];
-    }
+  getWebviewContent(commits) {
+    return `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>TimeLad: Git History</title>
+          <style>
+              body {
+                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+                  padding: 0 16px;
+                  color: var(--vscode-foreground);
+                  background-color: var(--vscode-editor-background);
+                  margin: 0;
+              }
+              .header {
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                  padding: 16px 0;
+                  border-bottom: 1px solid var(--vscode-panel-border);
+                  margin-bottom: 16px;
+              }
+              h1 {
+                  font-size: 1.3em;
+                  margin: 0;
+                  color: var(--vscode-terminal-ansiGreen);
+              }
+              .refresh-btn {
+                  background: var(--vscode-button-background);
+                  color: var(--vscode-button-foreground);
+                  border: none;
+                  border-radius: 4px;
+                  padding: 6px 12px;
+                  cursor: pointer;
+                  font-size: 12px;
+                  display: flex;
+                  align-items: center;
+                  gap: 4px;
+              }
+              .refresh-btn:hover {
+                  background: var(--vscode-button-hoverBackground);
+              }
+              .commit-list {
+                  list-style-type: none;
+                  padding: 0;
+                  margin: 0;
+              }
+              .commit-item {
+                  padding: 12px;
+                  margin-bottom: 8px;
+                  border-radius: 6px;
+                  background-color: var(--vscode-editor-inactiveSelectionBackground);
+                  cursor: pointer;
+                  transition: all 0.2s ease;
+                  border: 1px solid transparent;
+              }
+              .commit-item:hover {
+                  background-color: var(--vscode-editor-selectionBackground);
+                  border-color: var(--vscode-focusBorder);
+                  transform: translateY(-1px);
+              }
+              .commit-version {
+                  font-family: var(--vscode-editor-font-family, 'Courier New', monospace);
+                  color: var(--vscode-editor-background);
+                  background-color: var(--vscode-terminal-ansiGreen);
+                  padding: 2px 6px;
+                  border-radius: 3px;
+                  margin-right: 8px;
+                  font-weight: bold;
+                  font-size: 0.85em;
+              }
+              .commit-author {
+                  color: var(--vscode-editor-foreground);
+                  font-weight: 600;
+                  font-size: 0.9em;
+              }
+              .commit-date {
+                  color: var(--vscode-descriptionForeground);
+                  font-size: 0.8em;
+                  margin-left: 8px;
+              }
+              .commit-subject {
+                  margin-top: 6px;
+                  color: var(--vscode-editor-foreground);
+                  line-height: 1.4;
+                  font-size: 0.9em;
+              }
+              .commit-refs {
+                  display: inline-block;
+                  padding: 2px 6px;
+                  margin-left: 8px;
+                  background-color: var(--vscode-badge-background);
+                  color: var(--vscode-badge-foreground);
+                  border-radius: 10px;
+                  font-size: 0.75em;
+              }
+              .search-box {
+                  width: 100%;
+                  padding: 8px;
+                  margin: 0 0 16px 0;
+                  background-color: var(--vscode-input-background);
+                  color: var(--vscode-input-foreground);
+                  border: 1px solid var(--vscode-input-border);
+                  border-radius: 4px;
+                  font-size: 13px;
+                  font-family: inherit;
+                  box-sizing: border-box;
+              }
+              .search-box:focus {
+                  outline: none;
+                  border-color: var(--vscode-focusBorder);
+              }
+              .no-commits {
+                  text-align: center;
+                  color: var(--vscode-descriptionForeground);
+                  font-style: italic;
+                  padding: 40px 20px;
+              }
+              .commit-count {
+                  font-size: 0.9em;
+                  color: var(--vscode-descriptionForeground);
+                  margin: 0;
+              }
+          </style>
+      </head>
+      <body>
+          <div class="header">
+              <div>
+                  <h1>📊 Git History</h1>
+                  <p class="commit-count">${commits.length} recent commits</p>
+              </div>
+              <button class="refresh-btn" onclick="refreshHistory()">
+                  🔄 Refresh
+              </button>
+          </div>
+          
+          <input type="text" class="search-box" placeholder="🔍 Filter commits by message, author, or version..." id="commitFilter">
+          
+          ${
+            commits.length === 0
+              ? '<div class="no-commits">No commits found in this repository.</div>'
+              : `<ul class="commit-list" id="commitList">
+              ${commits
+                .map(
+                  (commit) => `
+                  <li class="commit-item" data-hash="${commit.hash}">
+                      <div>
+                          <span class="commit-version">v${commit.version}</span>
+                          <span class="commit-author">${commit.author}</span>
+                          <span class="commit-date">${commit.date}</span>
+                          ${
+                            commit.refs
+                              ? `<span class="commit-refs">${commit.refs}</span>`
+                              : ""
+                          }
+                      </div>
+                      <div class="commit-subject">${commit.subject}</div>
+                  </li>
+              `
+                )
+                .join("")}
+            </ul>`
+          }
 
-    if (!element) {
-      return this.commits;
-    }
+          <script>
+              // Get VS Code API
+              const vscode = acquireVsCodeApi();
 
-    return [];
+              // Handle click on commit item
+              document.querySelectorAll('.commit-item').forEach(item => {
+                  item.addEventListener('click', () => {
+                      const hash = item.getAttribute('data-hash');
+                      vscode.postMessage({
+                          command: 'showCommit',
+                          hash: hash
+                      });
+                  });
+              });
+
+              // Filter commits
+              const filterInput = document.getElementById('commitFilter');
+              const commitList = document.getElementById('commitList');
+              
+              if (filterInput && commitList) {
+                  const commitItems = document.querySelectorAll('.commit-item');
+
+                  filterInput.addEventListener('input', () => {
+                      const filterValue = filterInput.value.toLowerCase();
+                      
+                      commitItems.forEach(item => {
+                          const commitText = item.textContent.toLowerCase();
+                          if (commitText.includes(filterValue)) {
+                              item.style.display = 'block';
+                          } else {
+                              item.style.display = 'none';
+                          }
+                      });
+                  });
+              }
+
+              // Refresh functionality
+              function refreshHistory() {
+                  vscode.postMessage({
+                      command: 'refresh'
+                  });
+              }
+          </script>
+      </body>
+      </html>
+      `;
   }
 }
 
@@ -177,9 +437,9 @@ function activate(context) {
   console.log("TimeLad is now active!");
   vscode.window.showInformationMessage("TimeLad extension is now active!");
 
-  // Create the tree data provider for Git History view
-  const gitHistoryProvider = new GitHistoryTreeDataProvider();
-  vscode.window.registerTreeDataProvider(
+  // Create the webview provider for Git History view
+  const gitHistoryProvider = new GitHistoryWebviewProvider(context);
+  vscode.window.registerWebviewViewProvider(
     "timelad-git-history",
     gitHistoryProvider
   );
@@ -191,22 +451,7 @@ function activate(context) {
     )
   );
 
-  // Register command to show commit details from the tree view
-  context.subscriptions.push(
-    vscode.commands.registerCommand(
-      "timelad.showCommitDetails",
-      async (commit) => {
-        if (commit && commit.hash) {
-          try {
-            const repoPath = await getRepositoryPath();
-            await showCommitDetails(commit, repoPath);
-          } catch (error) {
-            vscode.window.showErrorMessage(`TimeLad: ${error.message}`);
-          }
-        }
-      }
-    )
-  );
+  // Note: showCommitDetails is now handled directly in the webview provider
 
   // Create status bar item
   const statusBarItem = vscode.window.createStatusBarItem(
