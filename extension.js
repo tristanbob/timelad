@@ -40,6 +40,18 @@ class GitHistoryWebviewProvider {
         }
       } else if (message.command === "refresh") {
         await this.refresh();
+      } else if (message.command === "restoreVersion") {
+        const commit = this.commits.find((c) => c.hash === message.hash);
+        if (commit) {
+          try {
+            const repoPath = await getRepositoryPath();
+            await restoreVersion(commit, repoPath);
+            // Refresh the view after restore
+            await this.refresh();
+          } catch (error) {
+            vscode.window.showErrorMessage(`TimeLad: ${error.message}`);
+          }
+        }
       }
     });
   }
@@ -241,7 +253,6 @@ class GitHistoryWebviewProvider {
                   margin-bottom: 8px;
                   border-radius: 6px;
                   background-color: var(--vscode-editor-inactiveSelectionBackground);
-                  cursor: pointer;
                   transition: all 0.2s ease;
                   border: 1px solid transparent;
               }
@@ -284,6 +295,45 @@ class GitHistoryWebviewProvider {
                   color: var(--vscode-badge-foreground);
                   border-radius: 10px;
                   font-size: 0.75em;
+              }
+              .commit-actions {
+                  margin-top: 8px;
+                  display: flex;
+                  gap: 8px;
+              }
+              .restore-btn {
+                  background: var(--vscode-button-secondaryBackground);
+                  color: var(--vscode-button-secondaryForeground);
+                  border: 1px solid var(--vscode-button-border);
+                  border-radius: 4px;
+                  padding: 4px 8px;
+                  cursor: pointer;
+                  font-size: 11px;
+                  display: flex;
+                  align-items: center;
+                  gap: 4px;
+                  transition: all 0.2s ease;
+              }
+              .restore-btn:hover {
+                  background: var(--vscode-button-secondaryHoverBackground);
+                  transform: translateY(-1px);
+              }
+              .view-btn {
+                  background: var(--vscode-button-background);
+                  color: var(--vscode-button-foreground);
+                  border: none;
+                  border-radius: 4px;
+                  padding: 4px 8px;
+                  cursor: pointer;
+                  font-size: 11px;
+                  display: flex;
+                  align-items: center;
+                  gap: 4px;
+                  transition: all 0.2s ease;
+              }
+              .view-btn:hover {
+                  background: var(--vscode-button-hoverBackground);
+                  transform: translateY(-1px);
               }
               .search-box {
                   width: 100%;
@@ -333,7 +383,7 @@ class GitHistoryWebviewProvider {
               : `<ul class="commit-list" id="commitList">
               ${commits
                 .map(
-                  (commit) => `
+                  (commit, index) => `
                   <li class="commit-item" data-hash="${commit.hash}">
                       <div>
                           <span class="commit-version">v${commit.version}</span>
@@ -346,6 +396,20 @@ class GitHistoryWebviewProvider {
                           }
                       </div>
                       <div class="commit-subject">${commit.subject}</div>
+                      <div class="commit-actions">
+                          <button class="view-btn" onclick="viewCommit('${
+                            commit.hash
+                          }')">
+                              👁️ View Details
+                          </button>
+                          ${
+                            index > 0
+                              ? `<button class="restore-btn" onclick="restoreCommit('${commit.hash}')">
+                              ⏮️ Restore Version
+                          </button>`
+                              : ""
+                          }
+                      </div>
                   </li>
               `
                 )
@@ -357,16 +421,7 @@ class GitHistoryWebviewProvider {
               // Get VS Code API
               const vscode = acquireVsCodeApi();
 
-              // Handle click on commit item
-              document.querySelectorAll('.commit-item').forEach(item => {
-                  item.addEventListener('click', () => {
-                      const hash = item.getAttribute('data-hash');
-                      vscode.postMessage({
-                          command: 'showCommit',
-                          hash: hash
-                      });
-                  });
-              });
+              // Commit item clicks are now handled by individual action buttons
 
               // Filter commits
               const filterInput = document.getElementById('commitFilter');
@@ -395,10 +450,161 @@ class GitHistoryWebviewProvider {
                       command: 'refresh'
                   });
               }
+
+              // Function to view commit details
+              function viewCommit(hash) {
+                  vscode.postMessage({
+                      command: 'showCommit',
+                      hash: hash
+                  });
+              }
+
+              // Function to restore a version
+              function restoreCommit(hash) {
+                  vscode.postMessage({
+                      command: 'restoreVersion',
+                      hash: hash
+                  });
+              }
           </script>
       </body>
       </html>
       `;
+  }
+}
+
+/**
+ * Restores a specific version by creating a new commit with that version's state
+ * @param {Object} commit The commit object to restore
+ * @param {string} repoPath Path to the repository
+ */
+async function restoreVersion(commit, repoPath) {
+  try {
+    // Show confirmation dialog first
+    const confirmRestore = await vscode.window.showInformationMessage(
+      `Are you sure you want to restore to Version ${commit.version}?\n\nThis will create a new commit with the state of Version ${commit.version}, preserving all existing history.`,
+      { modal: true },
+      "Restore Version",
+      "Cancel"
+    );
+
+    if (confirmRestore !== "Restore Version") {
+      return;
+    }
+
+    vscode.window.showInformationMessage("Restoring version...");
+
+    // Check if working directory is clean
+    const { stdout: statusOutput } = await execPromise(
+      "git status --porcelain",
+      { cwd: repoPath }
+    );
+
+    if (statusOutput.trim()) {
+      const stashChoice = await vscode.window.showWarningMessage(
+        "You have uncommitted changes. Would you like to stash them before restoring?",
+        "Stash Changes",
+        "Cancel"
+      );
+
+      if (stashChoice === "Stash Changes") {
+        await execPromise(
+          "git stash push -m 'Auto-stash before TimeLad restore'",
+          { cwd: repoPath }
+        );
+        vscode.window.showInformationMessage("Changes stashed successfully.");
+      } else {
+        return;
+      }
+    }
+
+    // Use a safe approach: checkout the specific commit's tree and create a new commit
+    // This restores the exact state without complicated revert logic
+    await execPromise(`git checkout ${commit.hash} -- .`, { cwd: repoPath });
+
+    // Check if there are any changes to commit
+    const { stdout: diffOutput } = await execPromise(
+      "git diff --cached --name-only",
+      { cwd: repoPath }
+    );
+
+    if (!diffOutput.trim()) {
+      // No changes detected, check working directory changes
+      const { stdout: workingDiffOutput } = await execPromise(
+        "git diff --name-only",
+        { cwd: repoPath }
+      );
+
+      if (!workingDiffOutput.trim()) {
+        vscode.window.showInformationMessage(
+          `Already at Version ${commit.version} state. No changes needed.`
+        );
+        return;
+      }
+    }
+
+    // Add all changes
+    await execPromise(`git add .`, { cwd: repoPath });
+
+    // Check again if there are changes after adding
+    const { stdout: finalDiffOutput } = await execPromise(
+      "git diff --cached --name-only",
+      { cwd: repoPath }
+    );
+
+    if (!finalDiffOutput.trim()) {
+      vscode.window.showInformationMessage(
+        `Already at Version ${commit.version} state. No changes needed.`
+      );
+      return;
+    }
+
+    // Create commit message using git commit without -m to avoid shell escaping issues
+    const restoreMessage = `Restore to Version ${commit.version}: ${commit.subject}
+
+Restored state from commit ${commit.hash}
+Original commit by: ${commit.author}
+Original date: ${commit.date}
+
+This is a safe restore that preserves all history.`;
+
+    // Use a more robust approach for commit message
+    const fs = require("fs");
+    const path = require("path");
+    const tempMsgFile = path.join(repoPath, ".git", "COMMIT_EDITMSG_TIMELAD");
+
+    try {
+      // Write commit message to temporary file
+      fs.writeFileSync(tempMsgFile, restoreMessage, "utf8");
+
+      // Commit using the file
+      await execPromise(`git commit -F "${tempMsgFile}"`, { cwd: repoPath });
+
+      // Clean up temporary file
+      fs.unlinkSync(tempMsgFile);
+    } catch (error) {
+      // Clean up temporary file even if commit fails
+      if (fs.existsSync(tempMsgFile)) {
+        fs.unlinkSync(tempMsgFile);
+      }
+      throw error;
+    }
+
+    // Get the new version number
+    const { stdout: countOutput } = await execPromise(
+      "git rev-list --count HEAD",
+      { cwd: repoPath }
+    );
+    const newVersion = parseInt(countOutput.trim());
+
+    vscode.window.showInformationMessage(
+      `✅ Successfully restored to Version ${commit.version}!\nCreated new Version ${newVersion} with the restored state.`
+    );
+  } catch (error) {
+    console.error("TimeLad: Error restoring version:", error);
+    vscode.window.showErrorMessage(
+      `TimeLad: Failed to restore version: ${error.message}`
+    );
   }
 }
 
@@ -549,6 +755,13 @@ function activate(context) {
             if (commit) {
               await showCommitDetails(commit, repoPath);
             }
+          } else if (message.command === "restoreVersion") {
+            const commit = commits.find((c) => c.hash === message.hash);
+            if (commit) {
+              await restoreVersion(commit, repoPath);
+              // Close the panel after restore
+              panel.dispose();
+            }
           }
         });
       } catch (error) {
@@ -621,9 +834,22 @@ function activate(context) {
     }
   );
 
+  // Register the "Restore Version" command
+  const restoreVersionDisposable = vscode.commands.registerCommand(
+    "timelad.restoreVersion",
+    async function (commit, repoPath) {
+      if (!commit || !repoPath) {
+        vscode.window.showErrorMessage("TimeLad: Invalid restore parameters");
+        return;
+      }
+      await restoreVersion(commit, repoPath);
+    }
+  );
+
   context.subscriptions.push(showGitInfoDisposable);
   context.subscriptions.push(showGitHistoryDisposable);
   context.subscriptions.push(listCommitsDisposable);
+  context.subscriptions.push(restoreVersionDisposable);
 }
 
 /**
@@ -663,7 +889,6 @@ function getCommitHistoryWebviewContent(commits) {
                 margin-bottom: 8px;
                 border-radius: 6px;
                 background-color: var(--vscode-editor-inactiveSelectionBackground);
-                cursor: pointer;
                 transition: background-color 0.2s ease;
                 border: 1px solid transparent;
             }
@@ -705,6 +930,45 @@ function getCommitHistoryWebviewContent(commits) {
                 border-radius: 10px;
                 font-size: 0.8em;
             }
+            .commit-actions {
+                margin-top: 8px;
+                display: flex;
+                gap: 8px;
+            }
+            .restore-btn {
+                background: var(--vscode-button-secondaryBackground);
+                color: var(--vscode-button-secondaryForeground);
+                border: 1px solid var(--vscode-button-border);
+                border-radius: 4px;
+                padding: 4px 8px;
+                cursor: pointer;
+                font-size: 11px;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                transition: all 0.2s ease;
+            }
+            .restore-btn:hover {
+                background: var(--vscode-button-secondaryHoverBackground);
+                transform: translateY(-1px);
+            }
+            .view-btn {
+                background: var(--vscode-button-background);
+                color: var(--vscode-button-foreground);
+                border: none;
+                border-radius: 4px;
+                padding: 4px 8px;
+                cursor: pointer;
+                font-size: 11px;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                transition: all 0.2s ease;
+            }
+            .view-btn:hover {
+                background: var(--vscode-button-hoverBackground);
+                transform: translateY(-1px);
+            }
             .search-box {
                 width: 100%;
                 padding: 10px;
@@ -739,7 +1003,7 @@ function getCommitHistoryWebviewContent(commits) {
             : `<ul class="commit-list" id="commitList">
             ${commits
               .map(
-                (commit) => `
+                (commit, index) => `
                 <li class="commit-item" data-hash="${commit.hash}">
                     <div>
                         <span class="commit-version">v${commit.version}</span>
@@ -752,6 +1016,20 @@ function getCommitHistoryWebviewContent(commits) {
                         }
                     </div>
                     <div class="commit-subject">${commit.subject}</div>
+                    <div class="commit-actions">
+                        <button class="view-btn" onclick="viewCommit('${
+                          commit.hash
+                        }')">
+                            👁️ View Details
+                        </button>
+                        ${
+                          index > 0
+                            ? `<button class="restore-btn" onclick="restoreCommit('${commit.hash}')">
+                            ⏮️ Restore Version
+                        </button>`
+                            : ""
+                        }
+                    </div>
                 </li>
             `
               )
@@ -763,16 +1041,21 @@ function getCommitHistoryWebviewContent(commits) {
             // Get VS Code API
             const vscode = acquireVsCodeApi();
 
-            // Handle click on commit item
-            document.querySelectorAll('.commit-item').forEach(item => {
-                item.addEventListener('click', () => {
-                    const hash = item.getAttribute('data-hash');
-                    vscode.postMessage({
-                        command: 'showCommit',
-                        hash: hash
-                    });
+            // Function to view commit details
+            function viewCommit(hash) {
+                vscode.postMessage({
+                    command: 'showCommit',
+                    hash: hash
                 });
-            });
+            }
+
+            // Function to restore a version
+            function restoreCommit(hash) {
+                vscode.postMessage({
+                    command: 'restoreVersion',
+                    hash: hash
+                });
+            }
 
             // Filter commits
             const filterInput = document.getElementById('commitFilter');

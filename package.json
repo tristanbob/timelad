@@ -41,6 +41,10 @@
         "command": "timelad.refreshGitHistory",
         "title": "Refresh",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "timelad.restoreVersion",
+        "title": "TimeLad: Restore Version"
       }
     ],
     "menus": {
