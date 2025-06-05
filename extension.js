@@ -453,17 +453,6 @@ function activate(context) {
 
   // Note: showCommitDetails is now handled directly in the webview provider
 
-  // Create status bar item
-  const statusBarItem = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Right,
-    100
-  );
-  statusBarItem.text = "$(clock) TimeLad";
-  statusBarItem.tooltip = "Click to show Git history";
-  statusBarItem.command = "timelad.showGitHistory";
-  statusBarItem.show();
-  context.subscriptions.push(statusBarItem);
-
   // Register the "Show Git Info" command
   const showGitInfoDisposable = vscode.commands.registerCommand(
     "timelad.showGitInfo",
