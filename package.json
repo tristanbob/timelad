@@ -22,7 +22,7 @@
     "onCommand:timelad.listCommits"
   ],
   "main": "./extension.js",
-  "icon": "images/icon.png",
+  "icon": "images/icon.svg",
   "contributes": {
     "commands": [
       {
@@ -36,14 +36,28 @@
       {
         "command": "timelad.listCommits",
         "title": "TimeLad: List Recent Commits"
+      },
+      {
+        "command": "timelad.refreshGitHistory",
+        "title": "Refresh",
+        "icon": "$(refresh)"
       }
     ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "timelad.refreshGitHistory",
+          "when": "view == timelad-git-history",
+          "group": "navigation"
+        }
+      ]
+    },
     "viewsContainers": {
       "activitybar": [
         {
           "id": "timelad-sidebar-view",
           "title": "TimeLad",
-          "icon": "images/icon.png"
+          "icon": "images/icon.svg"
         }
       ]
     },
@@ -72,7 +86,16 @@
     "typescript": "^4.4.3",
     "@vscode/test-electron": "^1.6.2"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "git",
+    "version control",
+    "commit history",
+    "git log",
+    "time tracking",
+    "git timeline",
+    "development tools",
+    "scm"
+  ],
+  "author": "tristanbob",
   "license": "ISC"
 }
