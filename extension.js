@@ -2,15 +2,146 @@ const vscode = require('vscode');
 const { exec } = require('child_process');
 const util = require('util');
 const execPromise = util.promisify(exec);
+const path = require('path');
 
 /**
  * Activates the extension
  * @param {vscode.ExtensionContext} context
  */
+/**
+ * GitHistoryTreeDataProvider implements a TreeDataProvider for showing git commit history in a sidebar view
+ */
+class GitHistoryTreeDataProvider {
+    constructor() {
+        this._onDidChangeTreeData = new vscode.EventEmitter();
+        this.onDidChangeTreeData = this._onDidChangeTreeData.event;
+        this.commits = [];
+        this.loading = false;
+        this.refresh();
+    }
+
+    async getCommits() {
+        try {
+            const gitExtension = vscode.extensions.getExtension('vscode.git')?.exports;
+            
+            if (!gitExtension) {
+                return [];
+            }
+            
+            const api = gitExtension.getAPI(1);
+            
+            if (!api.repositories || api.repositories.length === 0) {
+                return [];
+            }
+            
+            const repo = api.repositories[0];
+            const repoPath = repo.rootUri.fsPath;
+            
+            // Get total number of commits to determine the latest version number
+            const { stdout: countOutput } = await execPromise(
+                'git rev-list --count HEAD',
+                { cwd: repoPath }
+            );
+            
+            const totalCommits = parseInt(countOutput.trim());
+            
+            // Get detailed commit information for the recent commits
+            const { stdout } = await execPromise(
+                'git log -n 30 --pretty=format:"%h|%an|%ad|%s|%d" --date=format:"%Y-%m-%d %H:%M:%S"',
+                { cwd: repoPath }
+            );
+            
+            // Process the git log output and add version numbers
+            // Starting with the latest commit as the highest version number
+            return stdout.split('\n').map((line, index) => {
+                const [hash, author, date, subject, refs] = line.split('|');
+                const versionNumber = totalCommits - index; // Calculate version number
+                return { hash, author, date, subject, refs: refs || '', version: versionNumber };
+            });
+        } catch (error) {
+            console.error(`Error fetching commits: ${error.message}`);
+            return [];
+        }
+    }
+
+    async refresh() {
+        this.loading = true;
+        this._onDidChangeTreeData.fire();
+        this.commits = await this.getCommits();
+        this.loading = false;
+        this._onDidChangeTreeData.fire();
+    }
+
+    getTreeItem(element) {
+        const treeItem = new vscode.TreeItem(
+            `Version ${element.version}: ${element.subject}`,
+            vscode.TreeItemCollapsibleState.None
+        );
+        treeItem.description = `${element.author} - ${element.date}`;
+        treeItem.tooltip = `${element.subject}\nAuthor: ${element.author}\nDate: ${element.date}\nHash: ${element.hash}`;
+        treeItem.command = {
+            command: 'timelad.showCommitDetails',
+            title: 'Show Commit Details',
+            arguments: [element]
+        };
+        treeItem.iconPath = new vscode.ThemeIcon('git-commit');
+        return treeItem;
+    }
+
+    getChildren(element) {
+        if (this.loading) {
+            return [{ label: 'Loading...', description: '' }];
+        }
+        
+        if (!element) {
+            return this.commits;
+        }
+        
+        return [];
+    }
+}
+
 function activate(context) {
     // Display activation message in the console
     console.log('TimeLad is now active!');
     vscode.window.showInformationMessage('TimeLad extension is now active!');
+
+    // Create the tree data provider for Git History view
+    const gitHistoryProvider = new GitHistoryTreeDataProvider();
+    vscode.window.registerTreeDataProvider('timelad-git-history', gitHistoryProvider);
+    
+    // Register refresh command for the Git History view
+    context.subscriptions.push(
+        vscode.commands.registerCommand('timelad.refreshGitHistory', () => gitHistoryProvider.refresh())
+    );
+    
+    // Register command to show commit details from the tree view
+    context.subscriptions.push(
+        vscode.commands.registerCommand('timelad.showCommitDetails', async (commit) => {
+            if (commit) {
+                const gitExtension = vscode.extensions.getExtension('vscode.git')?.exports;
+                if (!gitExtension) return;
+                
+                const api = gitExtension.getAPI(1);
+                if (!api.repositories || api.repositories.length === 0) return;
+                
+                const repo = api.repositories[0];
+                const repoPath = repo.rootUri.fsPath;
+                await showCommitDetails(commit, repoPath);
+            }
+        })
+    );
+
+    // Create status bar item
+    const statusBarItem = vscode.window.createStatusBarItem(
+        vscode.StatusBarAlignment.Right,
+        100
+    );
+    statusBarItem.text = "$(clock) TimeLad";
+    statusBarItem.tooltip = "Click to show Git history";
+    statusBarItem.command = 'timelad.showGitHistory';
+    statusBarItem.show();
+    context.subscriptions.push(statusBarItem);
 
     // Register the "Show Git Info" command
     let showGitInfoDisposable = vscode.commands.registerCommand('timelad.showGitInfo', async function () {

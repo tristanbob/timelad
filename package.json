@@ -3,6 +3,11 @@
   "displayName": "TimeLad",
   "description": "A minimal VS Code extension for working with Git",
   "version": "0.1.0",
+  "publisher": "tristanbob",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tristanbob/timelad"
+  },
   "engines": {
     "vscode": "^1.60.0"
   },
@@ -32,7 +37,24 @@
         "command": "timelad.listCommits",
         "title": "TimeLad: List Recent Commits"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "timelad-sidebar-view",
+          "title": "TimeLad",
+          "icon": "images/icon.png"
+        }
+      ]
+    },
+    "views": {
+      "timelad-sidebar-view": [
+        {
+          "id": "timelad-git-history",
+          "name": "Git History"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run lint",
