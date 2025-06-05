@@ -122,15 +122,7 @@ const commitListStyles = `
     font-size: 0.9em;
   }
   
-  .commit-refs {
-    display: inline-block;
-    padding: 2px 6px;
-    margin-left: 8px;
-    background-color: var(--vscode-badge-background);
-    color: var(--vscode-badge-foreground);
-    border-radius: 10px;
-    font-size: 0.75em;
-  }
+
   
   .commit-actions {
     margin-top: 8px;
@@ -316,7 +308,7 @@ function getLoadingTemplate() {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>TimeLad: Git History</title>
+        <title>TimeLad</title>
         <style>
             ${baseStyles}
             body {
@@ -332,7 +324,7 @@ function getLoadingTemplate() {
     <body>
         <div class="loading">
             <div class="spinner"></div>
-            <p>Loading Git history...</p>
+            <p>Loading history...</p>
         </div>
     </body>
     </html>
@@ -352,11 +344,6 @@ function generateCommitListItem(commit, index) {
             <span class="commit-version">v${commit.version}</span>
             <span class="commit-author">${commit.author}</span>
             <span class="commit-date">${commit.date}</span>
-            ${
-              commit.refs
-                ? `<span class="commit-refs">${commit.refs}</span>`
-                : ""
-            }
         </div>
         <div class="commit-subject">${commit.subject}</div>
         <div class="commit-actions">
@@ -398,7 +385,7 @@ function getSidebarTemplate(commits) {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>TimeLad: Git History</title>
+        <title>TimeLad</title>
         <style>
             ${baseStyles}
             ${commitListStyles}
@@ -410,7 +397,7 @@ function getSidebarTemplate(commits) {
     <body>
         <div class="header">
             <div>
-                <h1>📊 Git History</h1>
+                <h1>📊 TimeLad</h1>
                 <p class="commit-count">${commits.length} recent commits</p>
             </div>
             <button class="refresh-btn" onclick="refreshHistory()">
@@ -502,7 +489,7 @@ function getCommitHistoryTemplate(commits) {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>TimeLad: Git History</title>
+        <title>TimeLad</title>
         <style>
             ${baseStyles}
             ${commitListStyles}
@@ -525,7 +512,7 @@ function getCommitHistoryTemplate(commits) {
         </style>
     </head>
     <body>
-        <h1>📊 Git Commit History</h1>
+        <h1>📊 TimeLad History</h1>
         
         <input type="text" class="search-box" placeholder="🔍 Filter commits by message, author, or version..." id="commitFilter">
         

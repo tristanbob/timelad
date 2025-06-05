@@ -34,7 +34,7 @@ module.exports = {
     STATUS_PORCELAIN: "git status --porcelain",
     STASH_PUSH: 'git stash push -m "Auto-stash before TimeLad restore"',
     LOG_FORMAT:
-      'git log -n %d --pretty=format:"%h|%an|%ad|%s|%d" --date=format:"%Y-%m-%d %H:%M:%S"',
+      'git log -n %d --pretty=format:"%h|%an|%ad|%s" --date=format:"%Y-%m-%d %H:%M:%S"',
     LOG_SIMPLE: 'git log -n %d --pretty=format:"%h|%an|%ar|%s"',
     SHOW_COMMIT: "git show %s --stat --pretty=fuller",
     CHECKOUT_FILES: "git checkout %s -- .",
@@ -47,7 +47,7 @@ module.exports = {
   // Messages
   MESSAGES: {
     EXTENSION_ACTIVATED: "TimeLad extension is now active!",
-    LOADING_HISTORY: "Loading Git history...",
+    LOADING_HISTORY: "Loading history...",
     RESTORING_VERSION: "Restoring version...",
     CHANGES_STASHED: "Changes stashed successfully.",
     NO_COMMITS: "No commits found in this repository.",

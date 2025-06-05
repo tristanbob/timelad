@@ -37,7 +37,7 @@ class GitCommands {
   }
 
   /**
-   * Show Git history in a full panel
+   * Show TimeLad history in a full panel
    */
   async showGitHistory() {
     try {
@@ -48,7 +48,7 @@ class GitCommands {
       // Create a WebView to display the commit history
       const panel = vscode.window.createWebviewPanel(
         constants.GIT_HISTORY_VIEW_ID,
-        `${constants.EXTENSION_NAME}: Git History`,
+        `${constants.EXTENSION_NAME}: History`,
         vscode.ViewColumn.One,
         {
           enableScripts: true,

@@ -14,7 +14,7 @@ function activate(context) {
   // Initialize command handler
   const gitCommands = new GitCommands();
 
-  // Create the webview provider for Git History view
+  // Create the webview provider for TimeLad view
   const gitHistoryProvider = new GitHistoryWebviewProvider(context);
 
   // Register webview provider
@@ -25,7 +25,7 @@ function activate(context) {
 
   // Register all commands
   const commandDisposables = [
-    // Refresh command for the Git History view
+    // Refresh command for the TimeLad view
     vscode.commands.registerCommand(
       constants.COMMANDS.REFRESH_GIT_HISTORY,
       () => gitHistoryProvider.refresh()
@@ -36,7 +36,7 @@ function activate(context) {
       gitCommands.showGitInfo()
     ),
 
-    // Show Git History command (full panel)
+    // Show TimeLad History command (full panel)
     vscode.commands.registerCommand(constants.COMMANDS.SHOW_GIT_HISTORY, () =>
       gitCommands.showGitHistory()
     ),

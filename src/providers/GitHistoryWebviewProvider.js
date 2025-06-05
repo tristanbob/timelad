@@ -198,7 +198,7 @@ class GitHistoryWebviewProvider {
             </style>
         </head>
         <body>
-            <h2>⚠️ Error Loading Git History</h2>
+                            <h2>⚠️ Error Loading History</h2>
             <div class="error">
                 ${error.message}
             </div>

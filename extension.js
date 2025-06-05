@@ -93,7 +93,7 @@ class GitHistoryWebviewProvider {
 
       // Get detailed commit information for the recent commits
       const { stdout } = await execPromise(
-        'git log -n 30 --pretty=format:"%h|%an|%ad|%s|%d" --date=format:"%Y-%m-%d %H:%M:%S"',
+        'git log -n 30 --pretty=format:"%h|%an|%ad|%s" --date=format:"%Y-%m-%d %H:%M:%S"',
         { cwd: repoPath }
       );
 
@@ -102,14 +102,13 @@ class GitHistoryWebviewProvider {
         .split("\n")
         .map((line, index) => {
           if (!line.trim()) return null;
-          const [hash, author, date, subject, refs] = line.split("|");
+          const [hash, author, date, subject] = line.split("|");
           const versionNumber = totalCommits - index;
           return {
             hash: hash || "",
             author: author || "Unknown",
             date: date || "",
             subject: subject || "No subject",
-            refs: refs || "",
             version: versionNumber,
           };
         })
@@ -287,15 +286,7 @@ class GitHistoryWebviewProvider {
                   line-height: 1.4;
                   font-size: 0.9em;
               }
-              .commit-refs {
-                  display: inline-block;
-                  padding: 2px 6px;
-                  margin-left: 8px;
-                  background-color: var(--vscode-badge-background);
-                  color: var(--vscode-badge-foreground);
-                  border-radius: 10px;
-                  font-size: 0.75em;
-              }
+
               .commit-actions {
                   margin-top: 8px;
                   display: flex;
@@ -367,7 +358,7 @@ class GitHistoryWebviewProvider {
       <body>
           <div class="header">
               <div>
-                  <h1>📊 Git History</h1>
+                  <h1>📊 TimeLad</h1>
                   <p class="commit-count">${commits.length} recent commits</p>
               </div>
               <button class="refresh-btn" onclick="refreshHistory()">
@@ -389,11 +380,6 @@ class GitHistoryWebviewProvider {
                           <span class="commit-version">v${commit.version}</span>
                           <span class="commit-author">${commit.author}</span>
                           <span class="commit-date">${commit.date}</span>
-                          ${
-                            commit.refs
-                              ? `<span class="commit-refs">${commit.refs}</span>`
-                              : ""
-                          }
                       </div>
                       <div class="commit-subject">${commit.subject}</div>
                       <div class="commit-actions">

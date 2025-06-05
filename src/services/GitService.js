@@ -100,14 +100,13 @@ class GitService {
         .split("\n")
         .map((line, index) => {
           if (!line.trim()) return null;
-          const [hash, author, date, subject, refs] = line.split("|");
+          const [hash, author, date, subject] = line.split("|");
           const versionNumber = totalCommits - index;
           return {
             hash: hash || "",
             author: author || "Unknown",
             date: date || "",
             subject: subject || "No subject",
-            refs: refs || "",
             version: versionNumber,
           };
         })
