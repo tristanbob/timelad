@@ -39,9 +39,17 @@ function activate(context) {
             
             const { commit, name: branch } = head;
             
-            // Display branch and commit info
+            // Get total number of commits to determine version number
+            const { stdout: countOutput } = await execPromise(
+                'git rev-list --count HEAD',
+                { cwd: repo.rootUri.fsPath }
+            );
+            
+            const versionNumber = parseInt(countOutput.trim());
+            
+            // Display branch and version info (user-friendly)
             vscode.window.showInformationMessage(
-                `Current Branch: ${branch}\nLatest Commit: ${commit.slice(0, 8)}`
+                `Current Branch: ${branch}\nCurrent Version: Version ${versionNumber}`
             );
         } catch (error) {
             vscode.window.showErrorMessage(`Error: ${error.message}`);
@@ -68,16 +76,26 @@ function activate(context) {
             const repo = api.repositories[0];
             const repoPath = repo.rootUri.fsPath;
             
+            // Get total number of commits to determine the latest version number
+            const { stdout: countOutput } = await execPromise(
+                'git rev-list --count HEAD',
+                { cwd: repoPath }
+            );
+            
+            const totalCommits = parseInt(countOutput.trim());
+            
             // Get detailed commit information for the recent commits
             const { stdout } = await execPromise(
                 'git log -n 30 --pretty=format:"%h|%an|%ad|%s|%d" --date=format:"%Y-%m-%d %H:%M:%S"',
                 { cwd: repoPath }
             );
             
-            // Process the git log output
-            const commits = stdout.split('\n').map(line => {
+            // Process the git log output and add version numbers
+            // Starting with the latest commit as the highest version number
+            const commits = stdout.split('\n').map((line, index) => {
                 const [hash, author, date, subject, refs] = line.split('|');
-                return { hash, author, date, subject, refs: refs || '' };
+                const versionNumber = totalCommits - index; // Calculate version number
+                return { hash, author, date, subject, refs: refs || '', version: versionNumber };
             });
             
             // Create a WebView to display the commit history
@@ -129,15 +147,24 @@ function activate(context) {
             const repo = api.repositories[0];
             const repoPath = repo.rootUri.fsPath;
             
+            // Get total number of commits to determine the latest version number
+            const { stdout: countOutput } = await execPromise(
+                'git rev-list --count HEAD',
+                { cwd: repoPath }
+            );
+            
+            const totalCommits = parseInt(countOutput.trim());
+            
             // Get a list of recent commits
             const { stdout } = await execPromise(
                 'git log -n 20 --pretty=format:"%h|%an|%ar|%s"', 
                 { cwd: repoPath }
             );
             
-            const commits = stdout.split('\n').map(line => {
+            const commits = stdout.split('\n').map((line, index) => {
                 const [hash, author, date, subject] = line.split('|');
-                return { hash, author, date, subject };
+                const versionNumber = totalCommits - index; // Calculate version number
+                return { hash, author, date, subject, version: versionNumber };
             });
             
             // Create a QuickPick to show the commits
@@ -146,7 +173,7 @@ function activate(context) {
             quickPick.placeholder = 'Select a commit to view details';
             quickPick.items = commits.map(commit => ({
                 label: commit.subject,
-                description: `${commit.hash} - ${commit.author}`,
+                description: `Version ${commit.version} - ${commit.author}`,
                 detail: `${commit.date}`,
                 commit: commit
             }));
@@ -213,12 +240,13 @@ function getCommitHistoryWebviewContent(commits) {
             .commit-item:hover {
                 background-color: var(--vscode-editor-selectionBackground);
             }
-            .commit-hash {
-                font-family: monospace;
-                color: var(--vscode-terminal-ansiYellow);
+            .commit-version {
+                font-family: var(--vscode-font-family);
+                color: var(--vscode-terminal-ansiGreen);
                 padding: 2px 6px;
                 border-radius: 2px;
                 margin-right: 8px;
+                font-weight: bold;
             }
             .commit-author {
                 color: var(--vscode-editor-foreground);
@@ -263,7 +291,7 @@ function getCommitHistoryWebviewContent(commits) {
             ${commits.map(commit => `
                 <li class="commit-item" data-hash="${commit.hash}">
                     <div>
-                        <span class="commit-hash">${commit.hash}</span>
+                        <span class="commit-version">Version ${commit.version}</span>
                         <span class="commit-author">${commit.author}</span>
                         <span class="commit-date">${commit.date}</span>
                         ${commit.refs ? `<span class="commit-refs">${commit.refs}</span>` : ''}
@@ -312,6 +340,11 @@ function getCommitHistoryWebviewContent(commits) {
     `;
 }
 
+/**
+ * Shows detailed information about a specific version/commit
+ * @param {Object} commit The commit object with version information
+ * @param {string} repoPath Path to the repository
+ */
 async function showCommitDetails(commit, repoPath) {
     try {
         // Get detailed commit info using git show
@@ -328,15 +361,15 @@ async function showCommitDetails(commit, repoPath) {
         workspaceEdit.createFile(filePath, { overwrite: true });
         await vscode.workspace.applyEdit(workspaceEdit);
         
-        // Write content to the file
+        // Write content to the file with user-friendly version number
         await vscode.workspace.fs.writeFile(
             filePath,
             Buffer.from(
-                `# Commit Details: ${commit.hash}\n\n` +
-                `Subject: ${commit.subject}\n` +
+                `# Version ${commit.version}\n\n` +
+                `Description: ${commit.subject}\n` +
                 `Author: ${commit.author}\n` +
                 `Date: ${commit.date}\n\n` +
-                `${stdout}`,
+                `Changes in this version:\n${stdout.split('diff --git')[0]}`,
                 'utf8'
             )
         );
