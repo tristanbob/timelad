@@ -334,58 +334,37 @@ class GitService {
         }
       }
 
-      // Checkout the specific commit's files
+      // Force checkout the specific commit's files to working directory
       const checkoutCommand = constants.GIT_COMMANDS.CHECKOUT_FILES.replace(
         "%s",
         commit.hash
       );
       await this.executeGitCommand(checkoutCommand, repoPath);
 
-      // Check if there are any changes to commit
-      const { stdout: diffOutput } = await this.executeGitCommand(
-        constants.GIT_COMMANDS.DIFF_CACHED,
-        repoPath
-      );
-
-      if (!diffOutput.trim()) {
-        // Check working directory changes
-        const { stdout: workingDiffOutput } = await this.executeGitCommand(
-          constants.GIT_COMMANDS.DIFF_WORKING,
-          repoPath
-        );
-
-        if (!workingDiffOutput.trim()) {
-          vscode.window.showInformationMessage(
-            `Already at Version ${commit.version} state. No changes needed.`
-          );
-          return;
-        }
-      }
-
-      // Add all changes
+      // Add all changes (this will stage the restored files)
       await this.executeGitCommand(constants.GIT_COMMANDS.ADD_ALL, repoPath);
 
-      // Check again if there are changes after adding
+      // Check if there are any changes to commit after staging
       const { stdout: finalDiffOutput } = await this.executeGitCommand(
         constants.GIT_COMMANDS.DIFF_CACHED,
         repoPath
       );
 
+      // If no changes detected, it means we're already at this state
+      // But still create a restore commit to document the action
       if (!finalDiffOutput.trim()) {
-        vscode.window.showInformationMessage(
-          `Already at Version ${commit.version} state. No changes needed.`
-        );
-        return;
+        // Create an empty commit to document the restore action
+        await this.createEmptyRestoreCommit(commit, repoPath);
+      } else {
+        // Create commit with the restored changes
+        await this.createRestoreCommit(commit, repoPath);
       }
-
-      // Create commit using temporary file
-      await this.createRestoreCommit(commit, repoPath);
 
       // Get the new version number
       const newVersion = await this.getCommitCount(repoPath);
 
       vscode.window.showInformationMessage(
-        `✅ Successfully restored to Version ${commit.version}!\nCreated new Version ${newVersion} with the restored state.`
+        `✅ Successfully restored to Version ${commit.version}!\nCreated new Version ${newVersion} with description "Restored version ${commit.version}".`
       );
 
       // Clear cache after successful restore
@@ -403,13 +382,7 @@ class GitService {
    * @param {string} repoPath Repository path
    */
   async createRestoreCommit(commit, repoPath) {
-    const restoreMessage = `Restore to Version ${commit.version}: ${commit.subject}
-
-Restored state from commit ${commit.hash}
-Original commit by: ${commit.author}
-Original date: ${commit.date}
-
-This is a safe restore that preserves all history.`;
+    const restoreMessage = `Restored version ${commit.version}`;
 
     const tempMsgFile = path.join(repoPath, constants.TEMP_COMMIT_FILE);
 
@@ -419,6 +392,38 @@ This is a safe restore that preserves all history.`;
 
       // Commit using the file
       const commitCommand = constants.GIT_COMMANDS.COMMIT_FILE.replace(
+        "%s",
+        tempMsgFile
+      );
+      await this.executeGitCommand(commitCommand, repoPath);
+
+      // Clean up temporary file
+      fs.unlinkSync(tempMsgFile);
+    } catch (error) {
+      // Clean up temporary file even if commit fails
+      if (fs.existsSync(tempMsgFile)) {
+        fs.unlinkSync(tempMsgFile);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Create an empty restore commit when no changes are detected
+   * @param {Object} commit Commit object to restore
+   * @param {string} repoPath Repository path
+   */
+  async createEmptyRestoreCommit(commit, repoPath) {
+    const restoreMessage = `Restored version ${commit.version}`;
+
+    const tempMsgFile = path.join(repoPath, constants.TEMP_COMMIT_FILE);
+
+    try {
+      // Write commit message to temporary file
+      fs.writeFileSync(tempMsgFile, restoreMessage, "utf8");
+
+      // Create empty commit to document the restore action
+      const commitCommand = constants.GIT_COMMANDS.COMMIT_EMPTY.replace(
         "%s",
         tempMsgFile
       );

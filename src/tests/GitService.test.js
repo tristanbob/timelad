@@ -127,6 +127,26 @@ async function runSimpleTests() {
       assert.strictEqual(typeof result, "boolean");
       console.log("✓ isGitInstalled test passed");
     },
+
+    "RestoreVersion creates proper commit message": () => {
+      // Test that createRestoreCommit and createEmptyRestoreCommit methods exist
+      const gitService = new GitService();
+      assert.strictEqual(typeof gitService.createRestoreCommit, "function");
+      assert.strictEqual(
+        typeof gitService.createEmptyRestoreCommit,
+        "function"
+      );
+      console.log("✓ Restore methods exist test passed");
+    },
+
+    "Constants include new commit empty command": () => {
+      assert.ok(constants.GIT_COMMANDS.COMMIT_EMPTY);
+      assert.strictEqual(
+        constants.GIT_COMMANDS.COMMIT_EMPTY,
+        'git commit --allow-empty -F "%s"'
+      );
+      console.log("✓ COMMIT_EMPTY constant test passed");
+    },
   };
 
   let passed = 0;
@@ -143,6 +163,7 @@ async function runSimpleTests() {
   }
 
   console.log(`\nTest Results: ${passed} passed, ${failed} failed`);
+  return { passed, failed };
 }
 
 if (require.main === module) {

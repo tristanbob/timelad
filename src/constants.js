@@ -50,6 +50,7 @@ module.exports = {
     ADD_ALL: "git add .",
     COMMIT_FILE: 'git commit -F "%s"',
     COMMIT_MESSAGE: 'git commit -m "%s"',
+    COMMIT_EMPTY: 'git commit --allow-empty -F "%s"',
     INIT_REPO: "git init",
     CONFIG_USER_NAME: 'git config user.name "%s"',
     CONFIG_USER_EMAIL: 'git config user.email "%s"',
