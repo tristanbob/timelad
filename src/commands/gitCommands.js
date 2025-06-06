@@ -289,6 +289,29 @@ class GitCommands {
       );
     }
   }
+
+  /**
+   * Save uncommitted changes with AI-generated commit message
+   */
+  async saveChanges() {
+    try {
+      vscode.window.showInformationMessage(constants.MESSAGES.SAVING_CHANGES);
+
+      const commitMessage = await this.gitService.saveChanges();
+
+      vscode.window.showInformationMessage(
+        `${constants.MESSAGES.CHANGES_SAVED}\nCommit: "${commitMessage}"`
+      );
+    } catch (error) {
+      if (error.message === constants.MESSAGES.NO_UNCOMMITTED_CHANGES) {
+        vscode.window.showInformationMessage(error.message);
+      } else {
+        vscode.window.showErrorMessage(
+          `${constants.EXTENSION_NAME}: Failed to save changes: ${error.message}`
+        );
+      }
+    }
+  }
 }
 
 module.exports = GitCommands;

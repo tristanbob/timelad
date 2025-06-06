@@ -19,7 +19,8 @@
     "*",
     "onCommand:timelad.showGitInfo",
     "onCommand:timelad.showGitHistory",
-    "onCommand:timelad.listCommits"
+    "onCommand:timelad.listCommits",
+    "onCommand:timelad.saveChanges"
   ],
   "main": "./src/extension.js",
   "icon": "images/icon.svg",
@@ -49,6 +50,10 @@
       {
         "command": "timelad.toggleExpertMode",
         "title": "TimeLad: Toggle Expert Mode"
+      },
+      {
+        "command": "timelad.saveChanges",
+        "title": "TimeLad: Save Changes"
       }
     ],
     "menus": {

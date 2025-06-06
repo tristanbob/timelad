@@ -120,6 +120,109 @@ const baseStyles = `
     background: var(--vscode-terminal-ansiYellow);
     opacity: 0.9;
   }
+  
+  .uncommitted-section {
+    margin-bottom: 20px;
+    padding: 16px;
+    border-radius: 8px;
+    background-color: var(--vscode-editor-inactiveSelectionBackground);
+    border-left: 4px solid var(--vscode-terminal-ansiYellow);
+  }
+  
+  .uncommitted-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  
+  .uncommitted-title {
+    font-size: 1.1em;
+    font-weight: 600;
+    color: var(--vscode-terminal-ansiYellow);
+    margin: 0;
+  }
+  
+  .save-btn {
+    background: var(--vscode-terminal-ansiGreen);
+    color: var(--vscode-editor-background);
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+  }
+  
+  .save-btn:hover {
+    background: var(--vscode-terminal-ansiGreen);
+    opacity: 0.9;
+    transform: translateY(-1px);
+  }
+  
+  .changes-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  
+  .change-item {
+    display: flex;
+    align-items: center;
+    padding: 4px 0;
+    font-size: 0.9em;
+    color: var(--vscode-editor-foreground);
+  }
+  
+  .change-status {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    margin-right: 8px;
+    font-size: 10px;
+    text-align: center;
+    line-height: 12px;
+    font-weight: bold;
+  }
+  
+  .change-status.modified {
+    background-color: var(--vscode-terminal-ansiYellow);
+    color: var(--vscode-editor-background);
+  }
+  
+  .change-status.added {
+    background-color: var(--vscode-terminal-ansiGreen);
+    color: var(--vscode-editor-background);
+  }
+  
+  .change-status.deleted {
+    background-color: var(--vscode-terminal-ansiRed);
+    color: var(--vscode-editor-background);
+  }
+  
+  .change-status.untracked {
+    background-color: var(--vscode-terminal-ansiBlue);
+    color: var(--vscode-editor-background);
+  }
+  
+  .changes-summary {
+    font-size: 0.8em;
+    color: var(--vscode-descriptionForeground);
+    margin-top: 8px;
+    font-style: italic;
+  }
+  
+  .no-changes {
+    text-align: center;
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+    padding: 20px;
+  }
 `;
 
 /**
@@ -365,6 +468,10 @@ const commonJavaScript = `
   function toggleExpertMode() {
     vscode.postMessage({ command: 'toggleExpertMode' });
   }
+  
+  function saveChanges() {
+    vscode.postMessage({ command: 'saveChanges' });
+  }
 `;
 
 /**
@@ -423,6 +530,82 @@ function getLoadingTemplate() {
         </div>
     </body>
     </html>
+  `;
+}
+
+/**
+ * Generate uncommitted changes section HTML
+ * @param {Object} uncommittedChanges Uncommitted changes information
+ * @param {boolean} expertMode Whether expert mode is enabled
+ * @returns {string} HTML for uncommitted changes section
+ */
+function generateUncommittedChangesSection(
+  uncommittedChanges,
+  expertMode = false
+) {
+  if (!uncommittedChanges || !uncommittedChanges.hasChanges) {
+    return "";
+  }
+
+  const changesListHTML = uncommittedChanges.files
+    .map((file) => {
+      const statusClass = file.type.includes("modified")
+        ? "modified"
+        : file.type.includes("added")
+        ? "added"
+        : file.type.includes("deleted")
+        ? "deleted"
+        : file.type.includes("untracked")
+        ? "untracked"
+        : "modified";
+
+      const statusSymbol =
+        statusClass === "modified"
+          ? "M"
+          : statusClass === "added"
+          ? "A"
+          : statusClass === "deleted"
+          ? "D"
+          : statusClass === "untracked"
+          ? "?"
+          : "M";
+
+      return `
+      <li class="change-item">
+        <span class="change-status ${statusClass}">${statusSymbol}</span>
+        <span class="change-filename">${file.fileName}</span>
+      </li>
+    `;
+    })
+    .join("");
+
+  return `
+    <div class="uncommitted-section">
+      <div class="uncommitted-header">
+        <h3 class="uncommitted-title">💾 Unsaved Changes</h3>
+        <button class="save-btn" onclick="saveChanges()" title="Save changes with AI-generated commit message">
+          💾 Save
+        </button>
+      </div>
+      <ul class="changes-list">
+        ${changesListHTML}
+      </ul>
+      ${
+        uncommittedChanges.summary
+          ? `<div class="changes-summary">${uncommittedChanges.summary}</div>`
+          : ""
+      }
+      ${
+        expertMode
+          ? `
+        <div class="expert-info" style="margin-top: 12px;">
+          <strong>Expert Info:</strong> Changes detected via <code>git status --porcelain</code>. 
+          Save will execute <code>git add .</code> followed by <code>git commit</code> with AI-generated message.
+        </div>
+      `
+          : ""
+      }
+    </div>
   `;
 }
 
@@ -490,9 +673,14 @@ function generateCommitListItem(commit, index, expertMode = false) {
  * Generate sidebar webview content
  * @param {Array} commits Array of commit objects
  * @param {boolean} expertMode Whether expert mode is enabled
+ * @param {Object} uncommittedChanges Uncommitted changes information
  * @returns {string} HTML content for sidebar
  */
-function getSidebarTemplate(commits, expertMode = false) {
+function getSidebarTemplate(
+  commits,
+  expertMode = false,
+  uncommittedChanges = null
+) {
   const commitListHTML =
     commits.length === 0
       ? '<div class="no-commits">No commits found in this repository.</div>'
@@ -551,6 +739,8 @@ function getSidebarTemplate(commits, expertMode = false) {
         </div>
         
         <input type="text" class="search-box" placeholder="🔍 Filter commits by message, author, or version..." id="commitFilter">
+        
+        ${generateUncommittedChangesSection(uncommittedChanges, expertMode)}
         
         ${commitListHTML}
 

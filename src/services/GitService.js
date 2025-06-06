@@ -355,6 +355,306 @@ This is a safe restore that preserves all history.`;
   }
 
   /**
+   * Get uncommitted changes status
+   * @param {string} repoPath Repository path
+   * @returns {Promise<{hasChanges: boolean, files: Array, summary: string}>} Changes information
+   */
+  async getUncommittedChanges(repoPath = null) {
+    if (!repoPath) {
+      repoPath = await this.getRepositoryPath();
+    }
+
+    const { stdout } = await this.executeGitCommand(
+      constants.GIT_COMMANDS.STATUS_PORCELAIN,
+      repoPath
+    );
+
+    const hasChanges = !!stdout.trim();
+
+    if (!hasChanges) {
+      return { hasChanges: false, files: [], summary: "" };
+    }
+
+    // Parse the git status output to get file changes
+    const files = stdout
+      .trim()
+      .split("\n")
+      .map((line) => {
+        const status = line.substring(0, 2);
+        const fileName = line.substring(3);
+        return {
+          status,
+          fileName,
+          type: this.parseFileStatus(status),
+        };
+      });
+
+    // Get detailed diff stat for summary
+    try {
+      const { stdout: diffStat } = await this.executeGitCommand(
+        constants.GIT_COMMANDS.DIFF_STAT,
+        repoPath
+      );
+      return { hasChanges: true, files, summary: diffStat };
+    } catch (error) {
+      // If diff stat fails, create a basic summary
+      const summary = `${files.length} file(s) changed`;
+      return { hasChanges: true, files, summary };
+    }
+  }
+
+  /**
+   * Parse git status codes
+   * @param {string} status Git status code
+   * @returns {string} Human readable status
+   */
+  parseFileStatus(status) {
+    const firstChar = status[0];
+    const secondChar = status[1];
+
+    let result = [];
+
+    // Index status (first character)
+    switch (firstChar) {
+      case "M":
+        result.push("modified");
+        break;
+      case "A":
+        result.push("added");
+        break;
+      case "D":
+        result.push("deleted");
+        break;
+      case "R":
+        result.push("renamed");
+        break;
+      case "C":
+        result.push("copied");
+        break;
+      case "?":
+        result.push("untracked");
+        break;
+      case " ":
+        break; // no index change
+      default:
+        result.push("unknown");
+    }
+
+    // Working tree status (second character)
+    switch (secondChar) {
+      case "M":
+        result.push("modified");
+        break;
+      case "D":
+        result.push("deleted");
+        break;
+      case "?":
+        if (firstChar !== "?") result.push("untracked");
+        break;
+      case " ":
+        break; // no working tree change
+    }
+
+    return result.length > 0 ? result.join(", ") : "unchanged";
+  }
+
+  /**
+   * Generate AI commit message using VSCode's built-in AI or fallback
+   * @param {Array} files Array of changed files
+   * @param {string} summary Git diff summary
+   * @returns {Promise<string>} Generated commit message
+   */
+  async generateCommitMessage(files, summary) {
+    try {
+      // Try to use VSCode's built-in AI first
+      const aiMessage = await this.tryVSCodeAI(files, summary);
+      if (aiMessage) {
+        return aiMessage;
+      }
+    } catch (error) {
+      console.log("VSCode AI not available, using fallback:", error.message);
+    }
+
+    // Fallback to rule-based commit message generation
+    return this.generateFallbackCommitMessage(files, summary);
+  }
+
+  /**
+   * Try to use VSCode's built-in AI for commit message generation
+   * @param {Array} files Array of changed files
+   * @param {string} summary Git diff summary
+   * @returns {Promise<string|null>} AI generated message or null
+   */
+  async tryVSCodeAI(files, summary) {
+    try {
+      // Check if GitHub Copilot extension is available and active
+      const copilotExtension = vscode.extensions.getExtension("GitHub.copilot");
+
+      if (!copilotExtension || !copilotExtension.isActive) {
+        return null;
+      }
+
+      // Try to access Copilot's API
+      const copilotApi = copilotExtension.exports;
+
+      if (!copilotApi || !copilotApi.generateCommitMessage) {
+        return null;
+      }
+
+      // Use Copilot to generate commit message
+      const prompt = this.buildCommitPrompt(files, summary);
+      const aiResponse = await copilotApi.generateCommitMessage(prompt);
+
+      return aiResponse ? aiResponse.trim() : null;
+    } catch (error) {
+      console.log("Failed to use VSCode AI:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Build prompt for AI commit message generation
+   * @param {Array} files Array of changed files
+   * @param {string} summary Git diff summary
+   * @returns {string} Formatted prompt
+   */
+  buildCommitPrompt(files, summary) {
+    const fileList = files.map((f) => `${f.type}: ${f.fileName}`).join("\n");
+
+    return `Generate a concise git commit message for the following changes:
+
+Files changed:
+${fileList}
+
+Summary:
+${summary}
+
+Please provide a clear, conventional commit message (50 chars or less for the subject line).`;
+  }
+
+  /**
+   * Generate fallback commit message using rule-based approach
+   * @param {Array} files Array of changed files
+   * @param {string} summary Git diff summary
+   * @returns {string} Generated commit message
+   */
+  generateFallbackCommitMessage(files, summary) {
+    if (files.length === 0) {
+      return "chore: update files";
+    }
+
+    // Analyze file types and changes
+    const fileTypes = new Set();
+    const changeTypes = new Set();
+
+    files.forEach((file) => {
+      // Extract file extension
+      const ext = file.fileName.split(".").pop().toLowerCase();
+      fileTypes.add(ext);
+
+      // Track change types
+      if (file.type.includes("added")) changeTypes.add("add");
+      if (file.type.includes("modified")) changeTypes.add("update");
+      if (file.type.includes("deleted")) changeTypes.add("remove");
+      if (file.type.includes("renamed")) changeTypes.add("rename");
+    });
+
+    // Determine commit type based on files and changes
+    let commitType = "chore";
+    let subject = "";
+
+    // Determine type based on file extensions
+    if (
+      fileTypes.has("js") ||
+      fileTypes.has("ts") ||
+      fileTypes.has("jsx") ||
+      fileTypes.has("tsx")
+    ) {
+      commitType = "feat";
+    } else if (
+      fileTypes.has("css") ||
+      fileTypes.has("scss") ||
+      fileTypes.has("less")
+    ) {
+      commitType = "style";
+    } else if (fileTypes.has("md") || fileTypes.has("txt")) {
+      commitType = "docs";
+    } else if (
+      fileTypes.has("json") ||
+      fileTypes.has("yml") ||
+      fileTypes.has("yaml")
+    ) {
+      commitType = "config";
+    }
+
+    // Generate subject based on changes
+    if (files.length === 1) {
+      const file = files[0];
+      const fileName = file.fileName.split("/").pop();
+
+      if (changeTypes.has("add")) {
+        subject = `add ${fileName}`;
+      } else if (changeTypes.has("remove")) {
+        subject = `remove ${fileName}`;
+      } else if (changeTypes.has("rename")) {
+        subject = `rename ${fileName}`;
+      } else {
+        subject = `update ${fileName}`;
+      }
+    } else {
+      const mainChangeType = changeTypes.has("add")
+        ? "add"
+        : changeTypes.has("update")
+        ? "update"
+        : changeTypes.has("remove")
+        ? "remove"
+        : "modify";
+
+      subject = `${mainChangeType} ${files.length} files`;
+    }
+
+    return `${commitType}: ${subject}`;
+  }
+
+  /**
+   * Save uncommitted changes with AI-generated commit message
+   * @param {string} repoPath Repository path
+   * @returns {Promise<string>} Commit message used
+   */
+  async saveChanges(repoPath = null) {
+    if (!repoPath) {
+      repoPath = await this.getRepositoryPath();
+    }
+
+    // Check if there are uncommitted changes
+    const changesInfo = await this.getUncommittedChanges(repoPath);
+
+    if (!changesInfo.hasChanges) {
+      throw new Error(constants.MESSAGES.NO_UNCOMMITTED_CHANGES);
+    }
+
+    // Add all changes
+    await this.executeGitCommand(constants.GIT_COMMANDS.ADD_ALL, repoPath);
+
+    // Generate commit message
+    const commitMessage = await this.generateCommitMessage(
+      changesInfo.files,
+      changesInfo.summary
+    );
+
+    // Commit with the generated message
+    const escapedMessage = commitMessage.replace(/"/g, '\\"');
+    const commitCommand = constants.GIT_COMMANDS.COMMIT_MESSAGE.replace(
+      "%s",
+      escapedMessage
+    );
+
+    await this.executeGitCommand(commitCommand, repoPath);
+
+    return commitMessage;
+  }
+
+  /**
    * Clear the cache
    */
   clearCache() {

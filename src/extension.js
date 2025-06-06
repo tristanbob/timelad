@@ -56,6 +56,11 @@ function activate(context) {
     vscode.commands.registerCommand(constants.COMMANDS.TOGGLE_EXPERT_MODE, () =>
       gitCommands.toggleExpertMode()
     ),
+
+    // Save Changes command
+    vscode.commands.registerCommand(constants.COMMANDS.SAVE_CHANGES, () =>
+      gitCommands.saveChanges()
+    ),
   ];
 
   // Add all disposables to context

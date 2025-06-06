@@ -14,6 +14,7 @@ class GitHistoryWebviewProvider {
     this.context = context;
     this.view = null;
     this.commits = [];
+    this.uncommittedChanges = null;
     this.gitService = new GitService();
   }
 
@@ -61,6 +62,9 @@ class GitHistoryWebviewProvider {
         break;
       case "toggleExpertMode":
         await this.toggleExpertMode();
+        break;
+      case "saveChanges":
+        await this.saveChanges();
         break;
       default:
         console.warn(
@@ -177,6 +181,32 @@ class GitHistoryWebviewProvider {
   }
 
   /**
+   * Save uncommitted changes
+   */
+  async saveChanges() {
+    try {
+      vscode.window.showInformationMessage(constants.MESSAGES.SAVING_CHANGES);
+
+      const commitMessage = await this.gitService.saveChanges();
+
+      vscode.window.showInformationMessage(
+        `${constants.MESSAGES.CHANGES_SAVED}\nCommit: "${commitMessage}"`
+      );
+
+      // Refresh the view after saving
+      await this.refresh();
+    } catch (error) {
+      if (error.message === constants.MESSAGES.NO_UNCOMMITTED_CHANGES) {
+        vscode.window.showInformationMessage(error.message);
+      } else {
+        vscode.window.showErrorMessage(
+          `${constants.EXTENSION_NAME}: Failed to save changes: ${error.message}`
+        );
+      }
+    }
+  }
+
+  /**
    * Refresh the webview content
    */
   async refresh() {
@@ -191,17 +221,25 @@ class GitHistoryWebviewProvider {
     this.view.webview.html = getLoadingTemplate();
 
     try {
-      // Fetch commits
-      this.commits = await this.gitService.getCommits(
-        constants.MAX_COMMITS_SIDEBAR
-      );
+      // Fetch commits and uncommitted changes
+      const [commits, uncommittedChanges] = await Promise.all([
+        this.gitService.getCommits(constants.MAX_COMMITS_SIDEBAR),
+        this.gitService.getUncommittedChanges(),
+      ]);
+
+      this.commits = commits;
+      this.uncommittedChanges = uncommittedChanges;
 
       // Check if expert mode is enabled
       const config = vscode.workspace.getConfiguration("timelad");
       const expertMode = config.get("expertMode", false);
 
-      // Update webview with commit data
-      this.view.webview.html = getSidebarTemplate(this.commits, expertMode);
+      // Update webview with commit data and uncommitted changes
+      this.view.webview.html = getSidebarTemplate(
+        this.commits,
+        expertMode,
+        this.uncommittedChanges
+      );
     } catch (error) {
       console.error(
         `${constants.EXTENSION_NAME}: Error refreshing commits:`,

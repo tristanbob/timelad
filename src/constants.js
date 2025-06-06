@@ -27,12 +27,14 @@ module.exports = {
     REFRESH_GIT_HISTORY: "timelad.refreshGitHistory",
     RESTORE_VERSION: "timelad.restoreVersion",
     TOGGLE_EXPERT_MODE: "timelad.toggleExpertMode",
+    SAVE_CHANGES: "timelad.saveChanges",
   },
 
   // Git command templates
   GIT_COMMANDS: {
     COUNT_COMMITS: "git rev-list --count HEAD",
     STATUS_PORCELAIN: "git status --porcelain",
+    STATUS_LONG: "git status",
     STASH_PUSH: 'git stash push -m "Auto-stash before TimeLad restore"',
     LOG_FORMAT:
       'git log -n %d --pretty=format:"%h|%an|%ad|%s" --date=format:"%Y-%m-%d %H:%M:%S"',
@@ -41,8 +43,10 @@ module.exports = {
     CHECKOUT_FILES: "git checkout %s -- .",
     DIFF_CACHED: "git diff --cached --name-only",
     DIFF_WORKING: "git diff --name-only",
+    DIFF_STAT: "git diff --stat",
     ADD_ALL: "git add .",
     COMMIT_FILE: 'git commit -F "%s"',
+    COMMIT_MESSAGE: 'git commit -m "%s"',
   },
 
   // Messages
@@ -54,6 +58,10 @@ module.exports = {
     NO_COMMITS: "No commits found in this repository.",
     NOT_ON_BRANCH: "Not on any branch",
     INVALID_RESTORE_PARAMS: "TimeLad: Invalid restore parameters",
+    SAVING_CHANGES: "Saving changes...",
+    CHANGES_SAVED: "Changes saved successfully!",
+    NO_UNCOMMITTED_CHANGES: "No uncommitted changes to save.",
+    GENERATING_COMMIT_MESSAGE: "Generating commit message...",
   },
 
   // Error messages
