@@ -129,11 +129,11 @@
     "lint": "eslint .",
     "test": "npm run test:unit && npm run test:integration",
     "test:unit": "mocha src/**/*.test.js --timeout 10000",
-    "test:integration": "node ./test/runTest.js",
-    "test:integration:retry": "node ./test/runTest.js || node ./test/runTest.js || node ./test/runTest.js",
+    "test:integration": "vscode-test",
+    "test:integration:insiders": "vscode-test --version insiders",
     "test:coverage": "nyc npm run test:unit",
     "test:watch": "npm run test:unit -- --watch",
-    "test:unit-only": "npm run test:unit",
+    "test:all": "npm run test:unit && npm run test:integration",
     "test:safe": "npm run test:unit"
   },
   "devDependencies": {
@@ -143,6 +143,7 @@
     "@types/node": "14.x",
     "@types/sinon": "^10.0.0",
     "@types/vscode": "^1.60.0",
+    "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.5.2",
     "eslint": "^7.32.0",
     "glob": "^7.1.7",

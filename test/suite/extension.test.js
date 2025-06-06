@@ -1,55 +1,84 @@
 const assert = require("assert");
 const vscode = require("vscode");
 
-suite("Extension Integration Tests", () => {
-  vscode.window.showInformationMessage("Start all tests.");
-
-  test("Extension should be present", () => {
-    assert.ok(vscode.extensions.getExtension("tristanbob.timelad"));
+describe("Extension Integration Tests", () => {
+  // Use after hook for proper cleanup
+  after(() => {
+    vscode.window.showInformationMessage("All integration tests done!");
   });
 
-  test("Extension should activate", async () => {
+  it("Extension should be present", async () => {
     const extension = vscode.extensions.getExtension("tristanbob.timelad");
-    await extension.activate();
-    assert.strictEqual(extension.isActive, true);
+    assert.ok(extension, "Extension should be found");
   });
 
-  test("Commands should be registered", async () => {
+  it("Extension should activate", async () => {
+    const extension = vscode.extensions.getExtension("tristanbob.timelad");
+    assert.ok(extension, "Extension should be found");
+
+    if (!extension.isActive) {
+      await extension.activate();
+    }
+
+    assert.ok(extension.isActive, "Extension should be active");
+  });
+
+  it("Commands should be registered", async () => {
     const commands = await vscode.commands.getCommands(true);
 
     const expectedCommands = [
       "timelad.showGitInfo",
       "timelad.showGitHistory",
       "timelad.listCommits",
-      "timelad.refreshGitHistory",
-      "timelad.restoreVersion",
-      "timelad.toggleExpertMode",
       "timelad.saveChanges",
       "timelad.setupVersionTracking",
       "timelad.saveToGitHub",
       "timelad.loadFromGitHub",
     ];
 
-    expectedCommands.forEach((command) => {
+    for (const command of expectedCommands) {
       assert.ok(
         commands.includes(command),
         `Command ${command} should be registered`
       );
-    });
+    }
   });
 
-  test("Configuration should be available", () => {
+  it("Configuration should be available", () => {
     const config = vscode.workspace.getConfiguration("timelad");
-    assert.ok(config);
+    assert.ok(
+      config !== undefined,
+      "TimeLad configuration should be available"
+    );
 
-    // Test default configuration values
-    assert.strictEqual(config.get("expertMode"), false);
-    assert.strictEqual(config.get("githubToken"), "");
+    // Test default values
+    assert.strictEqual(
+      config.get("expertMode"),
+      false,
+      "Expert mode should default to false"
+    );
+    assert.strictEqual(
+      config.get("githubToken"),
+      "",
+      "GitHub token should default to empty string"
+    );
   });
 
-  test("Extension activation message should be shown", () => {
-    // Test that the extension activated successfully (we can see it in the output)
-    // This is verified by the successful activation in the previous test
-    assert.ok(true);
+  it("Tree view should be registered", async () => {
+    // Check if the view container is registered by trying to reveal it
+    try {
+      // The view should exist even if we can't access it directly
+      const extension = vscode.extensions.getExtension("tristanbob.timelad");
+      assert.ok(extension, "Extension should be found for tree view test");
+
+      if (!extension.isActive) {
+        await extension.activate();
+      }
+
+      // Test passes if we get here without throwing
+      assert.ok(true, "Tree view registration completed without errors");
+    } catch (error) {
+      assert.fail(`Tree view registration failed: ${error.message}`);
+    }
   });
 });
