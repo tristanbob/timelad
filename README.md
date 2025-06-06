@@ -1,5 +1,17 @@
 # TimeLad
 
+> **⚠️ ALPHA RELEASE WARNING ⚠️**
+>
+> **This is an alpha version intended for testing purposes only.**
+>
+> - **Data Loss Risk**: This software may cause data loss or repository corruption
+> - **Testing Only**: Do not use with important or production data
+> - **Backup Required**: Always backup your repositories before testing
+> - **Experimental Features**: All features are experimental and may not work as expected
+> - **No Support**: This alpha version comes with no guarantees or support
+>
+> **Only use this extension with disposable test data that you can afford to lose.**
+
 A minimal VS Code extension for working with Git.
 
 ## Features
@@ -68,6 +80,14 @@ Please report issues on the GitHub repository.
 
 ## Release Notes
 
-### 0.1.0
+### 0.1.0-alpha
 
-Initial release of TimeLad with basic Git integration.
+⚠️ **ALPHA RELEASE** - Initial alpha release of TimeLad with basic Git integration.
+
+**IMPORTANT**: This is an experimental alpha version:
+
+- Intended for testing purposes only
+- May cause data loss or repository corruption
+- Should not be used with important or production data
+- Always backup your repositories before testing
+- No support or guarantees provided

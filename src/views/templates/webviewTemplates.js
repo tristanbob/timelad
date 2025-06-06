@@ -14,6 +14,30 @@ const baseStyles = `
     line-height: 1.6;
   }
   
+  .alpha-warning {
+    background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+    color: white;
+    padding: 12px 16px;
+    margin: -16px -16px 16px -16px;
+    border-bottom: 3px solid #c0392b;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    font-weight: 600;
+    font-size: 0.9em;
+    text-align: center;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+  }
+  
+  .alpha-warning-icon {
+    font-size: 1.2em;
+    margin-right: 6px;
+  }
+  
+  .alpha-warning-text {
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+  }
+  
   .loading {
     text-align: center;
     color: var(--vscode-descriptionForeground);
@@ -536,6 +560,11 @@ function getLoadingTemplate() {
         </style>
     </head>
     <body>
+        <div class="alpha-warning">
+            <span class="alpha-warning-icon">⚠️</span>
+            <span class="alpha-warning-text">ALPHA VERSION - Testing Only - Use with Disposable Data</span>
+        </div>
+        
         <div class="loading">
             <div class="spinner"></div>
             <p>Loading history...</p>
@@ -720,6 +749,11 @@ function getSidebarTemplate(
         </style>
     </head>
     <body>
+        <div class="alpha-warning">
+            <span class="alpha-warning-icon">⚠️</span>
+            <span class="alpha-warning-text">ALPHA VERSION - Testing Only - Use with Disposable Data</span>
+        </div>
+        
         <div class="header">
             <div>
                 <h1>📊 TimeLad ${
@@ -789,6 +823,11 @@ function getCommitDetailsTemplate(commit, commitDetails, expertMode = false) {
         </style>
     </head>
     <body>
+        <div class="alpha-warning">
+            <span class="alpha-warning-icon">⚠️</span>
+            <span class="alpha-warning-text">ALPHA VERSION - Testing Only - Use with Disposable Data</span>
+        </div>
+        
         <h1><span class="version-badge">Version ${commit.version}</span> ${
     expertMode
       ? '<span class="expert-badge" style="margin-left: 10px;">Expert Mode</span>'
@@ -881,6 +920,11 @@ function getCommitHistoryTemplate(commits, expertMode = false) {
         </style>
     </head>
     <body>
+        <div class="alpha-warning">
+            <span class="alpha-warning-icon">⚠️</span>
+            <span class="alpha-warning-text">ALPHA VERSION - Testing Only - Use with Disposable Data</span>
+        </div>
+        
         <h1>📊 TimeLad History ${
           expertMode ? '<span class="expert-badge">Expert Mode</span>' : ""
         }</h1>

@@ -355,8 +355,19 @@ class GitService {
         // Stage all changes
         await this.executeGitCommand(constants.GIT_COMMANDS.ADD_ALL, repoPath);
 
-        // Create commit with the restored changes
-        await this.createRestoreCommit(commit, repoPath);
+        // Check if there are actually changes to commit
+        const { stdout: stagedChanges } = await this.executeGitCommand(
+          constants.GIT_COMMANDS.DIFF_CACHED,
+          repoPath
+        );
+
+        if (stagedChanges.trim()) {
+          // Create commit with the restored changes
+          await this.createRestoreCommit(commit, repoPath);
+        } else {
+          // No actual changes detected, create empty commit to document the action
+          await this.createEmptyRestoreCommit(commit, repoPath);
+        }
       }
 
       // Get the new version number
@@ -389,10 +400,11 @@ class GitService {
       // Write commit message to temporary file
       fs.writeFileSync(tempMsgFile, restoreMessage, "utf8");
 
-      // Commit using the file
+      // Commit using the file - convert Windows backslashes to forward slashes for git
+      const gitCompatiblePath = tempMsgFile.replace(/\\/g, "/");
       const commitCommand = constants.GIT_COMMANDS.COMMIT_FILE.replace(
         "%s",
-        tempMsgFile
+        gitCompatiblePath
       );
       await this.executeGitCommand(commitCommand, repoPath);
 
@@ -421,10 +433,11 @@ class GitService {
       // Write commit message to temporary file
       fs.writeFileSync(tempMsgFile, restoreMessage, "utf8");
 
-      // Create empty commit to document the restore action
+      // Create empty commit to document the restore action - convert Windows backslashes to forward slashes for git
+      const gitCompatiblePath = tempMsgFile.replace(/\\/g, "/");
       const commitCommand = constants.GIT_COMMANDS.COMMIT_EMPTY.replace(
         "%s",
-        tempMsgFile
+        gitCompatiblePath
       );
       await this.executeGitCommand(commitCommand, repoPath);
 

@@ -1,22 +1,26 @@
 {
   "name": "timelad",
   "displayName": "TimeLad",
-  "description": "A minimal VS Code extension for working with Git",
-  "version": "0.1.0",
+  "description": "⚠️ ALPHA: A beginner-friendly Git time travel extension with safe version restoration and beautiful interactive history - USE ONLY FOR TESTING WITH DISPOSABLE DATA",
+  "version": "0.1.0-alpha",
   "publisher": "tristanbob",
   "repository": {
     "type": "git",
     "url": "https://github.com/tristanbob/timelad"
   },
+  "bugs": {
+    "url": "https://github.com/tristanbob/timelad/issues"
+  },
+  "homepage": "https://github.com/tristanbob/timelad#readme",
   "engines": {
     "vscode": "^1.60.0"
   },
   "categories": [
-    "Other",
-    "SCM Providers"
+    "SCM Providers",
+    "Other"
   ],
   "activationEvents": [
-    "*",
+    "onView:timelad-git-history",
     "onCommand:timelad.showGitInfo",
     "onCommand:timelad.showGitHistory",
     "onCommand:timelad.listCommits",
@@ -26,7 +30,11 @@
     "onCommand:timelad.loadFromGitHub"
   ],
   "main": "./src/extension.js",
-  "icon": "images/icon.svg",
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#C80000",
+    "theme": "dark"
+  },
   "contributes": {
     "commands": [
       {
@@ -143,5 +151,5 @@
     "scm"
   ],
   "author": "tristanbob",
-  "license": "ISC"
+  "license": "MIT"
 }

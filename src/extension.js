@@ -10,6 +10,13 @@ const constants = require("./constants");
 function activate(context) {
   console.log(`${constants.EXTENSION_NAME} is now active!`);
 
+  // Alpha release warnings
+  console.warn("⚠️  ALPHA RELEASE WARNING ⚠️");
+  console.warn("TimeLad is an ALPHA version - use only for testing!");
+  console.warn("This software may cause data loss or repository corruption.");
+  console.warn("Do NOT use with important or production data.");
+  console.warn("Always backup your repositories before testing.");
+
   // Initialize command handler
   const gitCommands = new GitCommands();
 
