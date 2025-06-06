@@ -9,7 +9,6 @@ const constants = require("./constants");
  */
 function activate(context) {
   console.log(`${constants.EXTENSION_NAME} is now active!`);
-  vscode.window.showInformationMessage(constants.MESSAGES.EXTENSION_ACTIVATED);
 
   // Initialize command handler
   const gitCommands = new GitCommands();
@@ -60,6 +59,12 @@ function activate(context) {
     // Save Changes command
     vscode.commands.registerCommand(constants.COMMANDS.SAVE_CHANGES, () =>
       gitCommands.saveChanges()
+    ),
+
+    // Set Up Version Tracking command
+    vscode.commands.registerCommand(
+      constants.COMMANDS.SETUP_VERSION_TRACKING,
+      () => gitCommands.setupVersionTracking()
     ),
   ];
 

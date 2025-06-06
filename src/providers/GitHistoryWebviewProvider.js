@@ -29,6 +29,13 @@ class GitHistoryWebviewProvider {
     // Load initial content
     await this.refresh();
 
+    // Refresh when the view becomes visible (user clicks on extension)
+    webviewView.onDidChangeVisibility(() => {
+      if (webviewView.visible) {
+        this.refresh();
+      }
+    });
+
     // Handle messages from the webview
     webviewView.webview.onDidReceiveMessage(async (message) => {
       try {
@@ -66,6 +73,14 @@ class GitHistoryWebviewProvider {
       case "saveChanges":
         await this.saveChanges();
         break;
+      case "createRepository":
+        await this.createRepository();
+        break;
+      case "openUrl":
+        if (message.url) {
+          await vscode.env.openExternal(vscode.Uri.parse(message.url));
+        }
+        break;
       default:
         console.warn(
           `${constants.EXTENSION_NAME}: Unknown webview message command: ${message.command}`
@@ -95,18 +110,6 @@ class GitHistoryWebviewProvider {
     const commit = this.commits.find((c) => c.hash === commitHash);
     if (!commit) {
       throw new Error("Commit not found");
-    }
-
-    // Show confirmation dialog first
-    const confirmRestore = await vscode.window.showInformationMessage(
-      `Are you sure you want to restore to Version ${commit.version}?\n\nThis will create a new commit with the state of Version ${commit.version}, preserving all existing history.`,
-      { modal: true },
-      "Restore Version",
-      "Cancel"
-    );
-
-    if (confirmRestore !== "Restore Version") {
-      return;
     }
 
     vscode.window.showInformationMessage(constants.MESSAGES.RESTORING_VERSION);
@@ -207,6 +210,26 @@ class GitHistoryWebviewProvider {
   }
 
   /**
+   * Create a new repository
+   */
+  async createRepository() {
+    try {
+      // Show loading state while creating repository
+      this.view.webview.html = getLoadingTemplate();
+
+      // Create the repository
+      await this.gitService.createNewRepository();
+
+      // Refresh the view to show the new repository
+      await this.refresh();
+    } catch (error) {
+      // Error is already handled in createNewRepository
+      // Refresh to show the error state or original content
+      await this.refresh();
+    }
+  }
+
+  /**
    * Refresh the webview content
    */
   async refresh() {
@@ -221,6 +244,25 @@ class GitHistoryWebviewProvider {
     this.view.webview.html = getLoadingTemplate();
 
     try {
+      // First check if git is installed
+      const gitInstalled = await this.gitService.isGitInstalled();
+
+      if (!gitInstalled) {
+        // Show git installation message and return
+        await this.gitService.showGitNotInstalledMessage();
+        this.view.webview.html = this.getGitNotInstalledTemplate();
+        return;
+      }
+
+      // Check if repository exists
+      const hasRepo = await this.gitService.hasRepository();
+
+      if (!hasRepo) {
+        // Show the repository setup UI
+        this.view.webview.html = this.getNoRepositoryTemplate();
+        return;
+      }
+
       // Fetch commits and uncommitted changes
       const [commits, uncommittedChanges] = await Promise.all([
         this.gitService.getCommits(constants.MAX_COMMITS_SIDEBAR),
@@ -295,6 +337,290 @@ class GitHistoryWebviewProvider {
         </html>
       `;
     }
+  }
+
+  /**
+   * Get template for when git is not installed
+   * @returns {string} HTML template
+   */
+  getGitNotInstalledTemplate() {
+    return `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>TimeLad: Git Required</title>
+          <style>
+              body {
+                  font-family: var(--vscode-font-family);
+                  padding: 20px;
+                  color: var(--vscode-foreground);
+                  background-color: var(--vscode-editor-background);
+                  margin: 0;
+                  display: flex;
+                  justify-content: center;
+                  align-items: center;
+                  min-height: 100vh;
+                  flex-direction: column;
+                  text-align: center;
+              }
+              .error-container {
+                  max-width: 400px;
+                  padding: 30px;
+                  border-radius: 8px;
+                  background-color: var(--vscode-inputValidation-errorBackground);
+                  border: 1px solid var(--vscode-inputValidation-errorBorder);
+              }
+              .error-icon {
+                  font-size: 48px;
+                  margin-bottom: 20px;
+                  color: var(--vscode-errorForeground);
+              }
+              .error-title {
+                  font-size: 1.4em;
+                  color: var(--vscode-errorForeground);
+                  margin: 0 0 15px 0;
+                  font-weight: 600;
+              }
+              .error-description {
+                  color: var(--vscode-foreground);
+                  line-height: 1.6;
+                  margin-bottom: 25px;
+                  font-size: 0.95em;
+              }
+              .install-steps {
+                  text-align: left;
+                  margin: 20px 0;
+                  background-color: var(--vscode-editor-background);
+                  padding: 15px;
+                  border-radius: 4px;
+                  border: 1px solid var(--vscode-panel-border);
+              }
+              .install-steps h4 {
+                  margin: 0 0 10px 0;
+                  color: var(--vscode-terminal-ansiBlue);
+              }
+              .install-steps ul {
+                  margin: 0;
+                  padding-left: 20px;
+              }
+              .install-steps li {
+                  margin-bottom: 5px;
+                  font-size: 0.9em;
+              }
+              .action-btn {
+                  background: var(--vscode-button-background);
+                  color: var(--vscode-button-foreground);
+                  border: none;
+                  border-radius: 4px;
+                  padding: 12px 24px;
+                  cursor: pointer;
+                  font-size: 14px;
+                  font-weight: 500;
+                  margin: 8px;
+                  transition: all 0.2s ease;
+              }
+              .action-btn:hover {
+                  background: var(--vscode-button-hoverBackground);
+              }
+              .refresh-note {
+                  margin-top: 20px;
+                  padding: 10px;
+                  background-color: var(--vscode-textBlockQuote-background);
+                  border-left: 3px solid var(--vscode-terminal-ansiYellow);
+                  border-radius: 3px;
+                  font-size: 0.85em;
+                  text-align: left;
+              }
+          </style>
+      </head>
+      <body>
+          <div class="error-container">
+              <div class="error-icon">🔧</div>
+              <h1 class="error-title">Git Not Found</h1>
+              <p class="error-description">
+                  TimeLad needs Git to track your project's history, but Git isn't installed on your system.
+              </p>
+              
+              <div class="install-steps">
+                  <h4>📦 Installation Steps:</h4>
+                  <ul>
+                      <li><strong>Windows:</strong> Download from git-scm.com</li>
+                      <li><strong>Mac:</strong> Install Xcode Command Line Tools</li>
+                      <li><strong>Linux:</strong> Use your package manager</li>
+                  </ul>
+              </div>
+              
+              <button class="action-btn" onclick="openGitWebsite()">
+                  🌐 Download Git
+              </button>
+              
+              <div class="refresh-note">
+                  <strong>💡 After installing:</strong> Please restart VS Code, then refresh this view.
+              </div>
+          </div>
+          
+          <script>
+              const vscode = acquireVsCodeApi();
+              
+              function openGitWebsite() {
+                  vscode.postMessage({ command: 'openUrl', url: 'https://git-scm.com/downloads' });
+              }
+          </script>
+      </body>
+      </html>
+    `;
+  }
+
+  /**
+   * Get template for when no repository exists
+   * @returns {string} HTML template
+   */
+  getNoRepositoryTemplate() {
+    return `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>TimeLad: Get Started</title>
+          <style>
+              body {
+                  font-family: var(--vscode-font-family);
+                  padding: 20px;
+                  color: var(--vscode-foreground);
+                  background-color: var(--vscode-editor-background);
+                  margin: 0;
+                  display: flex;
+                  justify-content: center;
+                  align-items: center;
+                  min-height: 100vh;
+                  flex-direction: column;
+                  text-align: center;
+              }
+              .welcome-container {
+                  max-width: 350px;
+                  padding: 25px;
+                  border-radius: 8px;
+                  background-color: var(--vscode-editor-inactiveSelectionBackground);
+                  border: 1px solid var(--vscode-panel-border);
+              }
+              .welcome-icon {
+                  font-size: 40px;
+                  margin-bottom: 15px;
+              }
+              .welcome-title {
+                  font-size: 1.3em;
+                  color: var(--vscode-terminal-ansiGreen);
+                  margin: 0 0 12px 0;
+                  font-weight: 600;
+              }
+              .welcome-description {
+                  color: var(--vscode-descriptionForeground);
+                  line-height: 1.5;
+                  margin-bottom: 20px;
+                  font-size: 0.9em;
+              }
+              .benefits-list {
+                  text-align: left;
+                  margin: 15px 0;
+                  color: var(--vscode-editor-foreground);
+                  font-size: 0.85em;
+              }
+              .benefits-list li {
+                  margin-bottom: 6px;
+                  padding-left: 3px;
+              }
+              .setup-btn {
+                  background: var(--vscode-button-background);
+                  color: var(--vscode-button-foreground);
+                  border: none;
+                  border-radius: 4px;
+                  padding: 10px 20px;
+                  cursor: pointer;
+                  font-size: 13px;
+                  font-weight: 500;
+                  margin: 8px 3px;
+                  transition: all 0.2s ease;
+                  min-width: 140px;
+              }
+              .setup-btn:hover {
+                  background: var(--vscode-button-hoverBackground);
+                  transform: translateY(-1px);
+              }
+              .setup-btn.secondary {
+                  background: var(--vscode-button-secondaryBackground);
+                  color: var(--vscode-button-secondaryForeground);
+                  border: 1px solid var(--vscode-button-border);
+              }
+              .setup-btn.secondary:hover {
+                  background: var(--vscode-button-secondaryHoverBackground);
+              }
+              .analogy {
+                  background-color: var(--vscode-textBlockQuote-background);
+                  border-left: 3px solid var(--vscode-terminal-ansiBlue);
+                  padding: 12px;
+                  margin: 15px 0;
+                  border-radius: 3px;
+                  font-style: italic;
+                  color: var(--vscode-editor-foreground);
+                  font-size: 0.85em;
+              }
+          </style>
+      </head>
+      <body>
+          <div class="welcome-container">
+              <div class="welcome-icon">🚀</div>
+              <h1 class="welcome-title">Welcome to TimeLad!</h1>
+              <p class="welcome-description">
+                  This folder isn't set up for tracking your work history yet. Would you like TimeLad to set up version tracking?
+              </p>
+              
+              <div class="analogy">
+                  💡 Think of it like having an automatic "Save Game" feature for your code!
+              </div>
+              
+              <p class="welcome-description" style="font-weight: 500; margin-bottom: 8px;">
+                  Version tracking will help you:
+              </p>
+              
+              <ul class="benefits-list">
+                  <li>🛡️ Keep track of all your changes</li>
+                  <li>⏰ Go back to previous versions if something goes wrong</li>
+                  <li>📈 See the timeline of your work</li>
+                  <li>🎯 Never lose your progress again</li>
+              </ul>
+              
+              <div style="margin-top: 25px;">
+                  <button class="setup-btn" onclick="setupVersionTracking()">
+                      ✨ Set Up Version Tracking
+                  </button>
+                  <br>
+                  <button class="setup-btn secondary" onclick="refreshView()">
+                      🔄 Check Again
+                  </button>
+              </div>
+          </div>
+
+          <script>
+              const vscode = acquireVsCodeApi();
+
+              function setupVersionTracking() {
+                  vscode.postMessage({
+                      command: 'createRepository'
+                  });
+              }
+
+              function refreshView() {
+                  vscode.postMessage({
+                      command: 'refresh'
+                  });
+              }
+          </script>
+      </body>
+      </html>
+    `;
   }
 }
 

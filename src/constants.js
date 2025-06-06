@@ -28,6 +28,7 @@ module.exports = {
     RESTORE_VERSION: "timelad.restoreVersion",
     TOGGLE_EXPERT_MODE: "timelad.toggleExpertMode",
     SAVE_CHANGES: "timelad.saveChanges",
+    SETUP_VERSION_TRACKING: "timelad.setupVersionTracking",
   },
 
   // Git command templates
@@ -47,6 +48,9 @@ module.exports = {
     ADD_ALL: "git add .",
     COMMIT_FILE: 'git commit -F "%s"',
     COMMIT_MESSAGE: 'git commit -m "%s"',
+    INIT_REPO: "git init",
+    CONFIG_USER_NAME: 'git config user.name "%s"',
+    CONFIG_USER_EMAIL: 'git config user.email "%s"',
   },
 
   // Messages
@@ -62,17 +66,26 @@ module.exports = {
     CHANGES_SAVED: "Changes saved successfully!",
     NO_UNCOMMITTED_CHANGES: "No uncommitted changes to save.",
     GENERATING_COMMIT_MESSAGE: "Generating commit message...",
+    REPO_CREATED_SUCCESS:
+      "🎉 Awesome! Your project is now set up for version tracking. You can see your work history in the TimeLad sidebar!",
+    SETTING_UP_VERSION_TRACKING: "Setting up version tracking...",
   },
 
   // Error messages
   ERRORS: {
     GIT_EXTENSION_NOT_FOUND:
       "Git extension not found. Please ensure Git is installed and the Git extension is enabled.",
+    GIT_EXTENSION_NOT_READY:
+      "Git extension is not ready yet. Please wait a moment and try again.",
+    GIT_NOT_INSTALLED:
+      "Git is not installed on this system. Please install Git and restart VS Code.",
     NO_REPOSITORIES:
       "No Git repositories found in the current workspace. Please open a Git repository.",
     FETCH_COMMITS_FAILED: "Failed to fetch commits",
     RESTORE_VERSION_FAILED: "Failed to restore version",
     SHOW_COMMIT_DETAILS_FAILED: "Error showing commit details",
+    NO_WORKSPACE_FOLDER: "Please open a folder in VS Code first.",
+    REPO_CREATION_FAILED: "Could not set up version tracking",
   },
 
   // File paths

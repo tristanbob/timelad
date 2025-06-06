@@ -20,7 +20,8 @@
     "onCommand:timelad.showGitInfo",
     "onCommand:timelad.showGitHistory",
     "onCommand:timelad.listCommits",
-    "onCommand:timelad.saveChanges"
+    "onCommand:timelad.saveChanges",
+    "onCommand:timelad.setupVersionTracking"
   ],
   "main": "./src/extension.js",
   "icon": "images/icon.svg",
@@ -54,6 +55,10 @@
       {
         "command": "timelad.saveChanges",
         "title": "TimeLad: Save Changes"
+      },
+      {
+        "command": "timelad.setupVersionTracking",
+        "title": "TimeLad: Set Up Version Tracking"
       }
     ],
     "menus": {

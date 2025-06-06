@@ -87,6 +87,12 @@ const baseStyles = `
     border-left: 3px solid var(--vscode-terminal-ansiYellow);
   }
   
+  .uncommitted-section .expert-info {
+    background-color: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+    border-left: 3px solid var(--vscode-terminal-ansiRed);
+  }
+  
   .header-buttons {
     display: flex;
     gap: 8px;
@@ -125,8 +131,9 @@ const baseStyles = `
     margin-bottom: 20px;
     padding: 16px;
     border-radius: 8px;
-    background-color: var(--vscode-editor-inactiveSelectionBackground);
-    border-left: 4px solid var(--vscode-terminal-ansiYellow);
+    background-color: var(--vscode-terminal-ansiYellow);
+    color: var(--vscode-editor-background);
+    border-left: 4px solid var(--vscode-terminal-ansiRed);
   }
   
   .uncommitted-header {
@@ -139,7 +146,7 @@ const baseStyles = `
   .uncommitted-title {
     font-size: 1.1em;
     font-weight: 600;
-    color: var(--vscode-terminal-ansiYellow);
+    color: var(--vscode-editor-background);
     margin: 0;
   }
   
@@ -175,7 +182,7 @@ const baseStyles = `
     align-items: center;
     padding: 4px 0;
     font-size: 0.9em;
-    color: var(--vscode-editor-foreground);
+    color: var(--vscode-editor-background);
   }
   
   .change-status {
@@ -212,9 +219,10 @@ const baseStyles = `
   
   .changes-summary {
     font-size: 0.8em;
-    color: var(--vscode-descriptionForeground);
+    color: var(--vscode-editor-background);
     margin-top: 8px;
     font-style: italic;
+    opacity: 0.9;
   }
   
   .no-changes {
@@ -289,13 +297,14 @@ const commitListStyles = `
   }
   
   .restore-btn {
-    background: var(--vscode-button-secondaryBackground);
-    color: var(--vscode-button-secondaryForeground);
-    border: 1px solid var(--vscode-button-border);
+    background: var(--vscode-terminal-ansiGreen);
+    color: var(--vscode-editor-background);
+    border: none;
     border-radius: 4px;
-    padding: 4px 8px;
+    padding: 6px 12px;
     cursor: pointer;
-    font-size: 11px;
+    font-size: 12px;
+    font-weight: 600;
     display: flex;
     align-items: center;
     gap: 4px;
@@ -303,26 +312,29 @@ const commitListStyles = `
   }
   
   .restore-btn:hover {
-    background: var(--vscode-button-secondaryHoverBackground);
+    background: var(--vscode-terminal-ansiGreen);
+    opacity: 0.9;
     transform: translateY(-1px);
   }
   
   .view-btn {
-    background: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
-    border: none;
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    border: 1px solid var(--vscode-descriptionForeground);
     border-radius: 4px;
     padding: 4px 8px;
     cursor: pointer;
-    font-size: 11px;
+    font-size: 10px;
     display: flex;
     align-items: center;
     gap: 4px;
     transition: all 0.2s ease;
+    opacity: 0.7;
   }
   
   .view-btn:hover {
-    background: var(--vscode-button-hoverBackground);
+    background: var(--vscode-list-hoverBackground);
+    opacity: 1;
     transform: translateY(-1px);
   }
   

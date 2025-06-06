@@ -204,6 +204,68 @@ Run the example tests:
 node src/tests/GitService.test.js
 ```
 
+## Recent Improvements
+
+### Enhanced Git System Validation
+
+**Problem**: TimeLad would sometimes fail to detect git repositories or show confusing error messages due to two separate issues:
+
+1. Extension loading before VS Code Git extension was ready
+2. Git extension being available but Git not actually installed on the system
+
+**Solution**: Added comprehensive git validation with two-layer checking:
+
+#### 1. Git Installation Check
+
+```javascript
+// GitService.js
+async isGitInstalled() {
+  try {
+    await this.executeGitCommand("git --version", ".");
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+```
+
+#### 2. Improved Extension Readiness Check
+
+```javascript
+// GitService.js
+async waitForGitReady(maxAttempts = 10) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const gitExtension = this.getGitExtension();
+      if (gitExtension) {
+        const api = gitExtension.getAPI(1);
+        if (api && Array.isArray(api.repositories)) {
+          return true;
+        }
+      }
+    } catch (error) {
+      // Continue waiting
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  return false;
+}
+```
+
+#### 3. User-Friendly Error Handling
+
+- **Git Not Installed**: Shows helpful UI with installation instructions and direct link to Git downloads
+- **Extension Not Ready**: Provides clear messaging about waiting for Git extension
+- **Repository Setup**: Maintains existing friendly onboarding flow
+
+**Benefits**:
+
+- Clear distinction between "Git not installed" vs "No repository"
+- Helpful user guidance for Git installation with platform-specific instructions
+- Faster extension readiness detection (100ms intervals vs 200ms, max 1 second vs 10 seconds)
+- Eliminates race conditions between TimeLad and Git extension initialization
+- Maintains backward compatibility with existing functionality
+
 ## Future Improvements
 
 1. **TypeScript Migration**: Add type safety

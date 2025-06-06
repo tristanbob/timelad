@@ -27,11 +27,92 @@ class GitService {
   }
 
   /**
+   * Check if git is installed on the system
+   * @returns {Promise<boolean>} True if git is installed
+   */
+  async isGitInstalled() {
+    try {
+      // Try to run git --version to check if git is available
+      await this.executeGitCommand("git --version", ".");
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Wait for Git extension to be ready (simplified approach)
+   * @param {number} maxAttempts Maximum number of attempts
+   * @returns {Promise<boolean>} True if Git is ready, false if max attempts reached
+   */
+  async waitForGitReady(maxAttempts = 10) {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const gitExtension = this.getGitExtension();
+
+        if (gitExtension) {
+          const api = gitExtension.getAPI(1);
+          if (api && Array.isArray(api.repositories)) {
+            return true;
+          }
+        }
+      } catch (error) {
+        // Git extension might not be ready yet, continue
+      }
+
+      // Wait 100ms between attempts (much faster than before)
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    return false;
+  }
+
+  /**
+   * Check if Git system is ready and has repositories
+   * @returns {Promise<boolean>} True if git is ready and has repositories
+   */
+  async isGitSystemReady() {
+    try {
+      const gitExtension = this.getGitExtension();
+
+      if (!gitExtension) {
+        return false;
+      }
+
+      const api = gitExtension.getAPI(1);
+
+      if (!api) {
+        return false;
+      }
+
+      // Check if repositories array is available (even if empty)
+      // This indicates git extension is fully initialized
+      return Array.isArray(api.repositories);
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
    * Get repository path safely
    * @returns {Promise<string>} Repository path
    * @throws {Error} If Git extension or repository not found
    */
   async getRepositoryPath() {
+    // Check if git is installed first
+    const gitInstalled = await this.isGitInstalled();
+
+    if (!gitInstalled) {
+      throw new Error(constants.ERRORS.GIT_NOT_INSTALLED);
+    }
+
+    // Wait for Git extension to be ready
+    const gitReady = await this.waitForGitReady();
+
+    if (!gitReady) {
+      throw new Error(constants.ERRORS.GIT_EXTENSION_NOT_READY);
+    }
+
     const gitExtension = this.getGitExtension();
 
     if (!gitExtension) {
@@ -652,6 +733,211 @@ Please provide a clear, conventional commit message (50 chars or less for the su
     await this.executeGitCommand(commitCommand, repoPath);
 
     return commitMessage;
+  }
+
+  /**
+   * Check if a repository exists in the current workspace
+   * @returns {Promise<boolean>} True if repository exists
+   */
+  async hasRepository() {
+    try {
+      // First, check if git is actually installed on the system
+      const gitInstalled = await this.isGitInstalled();
+
+      if (!gitInstalled) {
+        console.log("TimeLad: Git is not installed on this system");
+        return false;
+      }
+
+      // Then, wait for Git extension to be ready
+      const gitReady = await this.waitForGitReady();
+
+      if (!gitReady) {
+        console.log(
+          "TimeLad: Git extension not ready - treating as no repository"
+        );
+        return false;
+      }
+
+      // Now check if repository exists
+      await this.getRepositoryPath();
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Show helpful message when git is not installed
+   * @returns {Promise<void>}
+   */
+  async showGitNotInstalledMessage() {
+    const message = `🔧 Git is not installed on your system.
+
+TimeLad needs Git to track your project's history. Git is a free tool that helps you manage your code versions.
+
+To install Git:
+• Windows: Download from git-scm.com
+• Mac: Install Xcode Command Line Tools or use Homebrew
+• Linux: Use your package manager (apt, yum, etc.)
+
+After installing Git, please restart VS Code.`;
+
+    await vscode.window
+      .showErrorMessage(message, { modal: true }, "Open Git Website")
+      .then((selection) => {
+        if (selection === "Open Git Website") {
+          vscode.env.openExternal(
+            vscode.Uri.parse("https://git-scm.com/downloads")
+          );
+        }
+      });
+  }
+
+  /**
+   * Offer to create a new repository when none exists
+   * Uses friendly, non-technical language to explain what this means
+   * @returns {Promise<boolean>} True if user wants to create repository
+   */
+  async offerToCreateRepository() {
+    const message = `🚀 Hey there! It looks like this folder isn't set up for tracking your work history yet.
+
+Would you like TimeLad to set up version tracking for this project? This will help you:
+• Keep track of all the changes you make
+• Go back to previous versions if something goes wrong  
+• See the timeline of your work
+• Never lose your progress again
+
+Think of it like having an automatic "Save Game" feature for your code!`;
+
+    const result = await vscode.window.showInformationMessage(
+      message,
+      { modal: true },
+      "Yes, Set Up Version Tracking",
+      "Not Right Now"
+    );
+
+    return result === "Yes, Set Up Version Tracking";
+  }
+
+  /**
+   * Create a new Git repository in the current workspace
+   * Provides friendly feedback about what's happening
+   * @returns {Promise<string>} Workspace path
+   */
+  async createNewRepository() {
+    try {
+      // Get the current workspace folder
+      const workspaceFolders = vscode.workspace.workspaceFolders;
+      if (!workspaceFolders || workspaceFolders.length === 0) {
+        throw new Error(constants.ERRORS.NO_WORKSPACE_FOLDER);
+      }
+
+      const workspacePath = workspaceFolders[0].uri.fsPath;
+
+      // Show progress indicator
+      return await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: constants.MESSAGES.SETTING_UP_VERSION_TRACKING,
+          cancellable: false,
+        },
+        async (progress) => {
+          progress.report({ increment: 0, message: "Initializing..." });
+
+          // Initialize Git repository
+          await this.executeGitCommand(
+            constants.GIT_COMMANDS.INIT_REPO,
+            workspacePath
+          );
+
+          progress.report({
+            increment: 50,
+            message: "Setting up configuration...",
+          });
+
+          // Set up initial configuration
+          try {
+            await this.executeGitCommand(
+              constants.GIT_COMMANDS.CONFIG_USER_NAME.replace(
+                "%s",
+                "VS Code User"
+              ),
+              workspacePath
+            );
+            await this.executeGitCommand(
+              constants.GIT_COMMANDS.CONFIG_USER_EMAIL.replace(
+                "%s",
+                "vscode@example.com"
+              ),
+              workspacePath
+            );
+          } catch (configError) {
+            // If config fails, that's okay - user might have global config
+            console.log(
+              "TimeLad: Could not set local git config, using global config"
+            );
+          }
+
+          progress.report({
+            increment: 80,
+            message: "Creating first save point...",
+          });
+
+          // Create an initial commit if there are files
+          try {
+            await this.executeGitCommand(
+              constants.GIT_COMMANDS.ADD_ALL,
+              workspacePath
+            );
+            await this.executeGitCommand(
+              constants.GIT_COMMANDS.COMMIT_MESSAGE.replace(
+                "%s",
+                "🎉 First save! Welcome to TimeLad version tracking"
+              ),
+              workspacePath
+            );
+          } catch (commitError) {
+            // If commit fails (no files to commit), create a README
+            const readmePath = path.join(workspacePath, "README.md");
+
+            if (!fs.existsSync(readmePath)) {
+              fs.writeFileSync(
+                readmePath,
+                "# My Project\n\nWelcome to your version-tracked project! 🚀\n"
+              );
+              await this.executeGitCommand("git add README.md", workspacePath);
+              await this.executeGitCommand(
+                constants.GIT_COMMANDS.COMMIT_MESSAGE.replace(
+                  "%s",
+                  "🎉 First save! Welcome to TimeLad version tracking"
+                ),
+                workspacePath
+              );
+            }
+          }
+
+          progress.report({ increment: 100, message: "Done!" });
+
+          // Show success message
+          vscode.window.showInformationMessage(
+            constants.MESSAGES.REPO_CREATED_SUCCESS
+          );
+
+          // Refresh the Git extension to recognize the new repository
+          setTimeout(() => {
+            vscode.commands.executeCommand("git.refresh");
+          }, 1000);
+
+          return workspacePath;
+        }
+      );
+    } catch (error) {
+      vscode.window.showErrorMessage(
+        `${constants.EXTENSION_NAME}: ${constants.ERRORS.REPO_CREATION_FAILED}: ${error.message}`
+      );
+      throw error;
+    }
   }
 
   /**

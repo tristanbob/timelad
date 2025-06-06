@@ -10,14 +10,16 @@ TimeLad provides enhanced commands for interacting with Git repositories:
 - **Show Git History**: Open a beautiful interactive UI showing the Git history with version restoration
 - **List Recent Commits**: Display a filterable list of recent commits
 - **Restore Version**: Safely restore any previous version by creating a new commit (no data loss)
+- **Set Up Version Tracking**: Automatically create a new Git repository when none exists, with friendly guidance
 
 ## Usage
 
-1. Open a Git repository in VS Code
+1. Open any folder in VS Code
 2. Access TimeLad commands:
    - Through the Command Palette (Ctrl+Shift+P)
    - Search for "TimeLad: Show Git Info" or "TimeLad: Show Git History"
    - Use the TimeLad sidebar to view Git history with restore functionality
+   - If no Git repository exists, TimeLad will offer to set up version tracking for you
 
 ### Restore Version Feature
 
@@ -25,6 +27,14 @@ TimeLad provides enhanced commands for interacting with Git repositories:
 - **No Data Loss**: Creates a new commit with the restored state, preserving all history
 - **Automatic Stashing**: Automatically handles uncommitted changes by offering to stash them
 - **Version Tracking**: Each restore creates a new version number, making it easy to track changes
+
+### Set Up Version Tracking Feature
+
+- **Beginner-Friendly**: Uses simple, non-technical language to explain what version tracking means
+- **Automatic Setup**: Creates a Git repository with sensible defaults
+- **First Commit**: Automatically creates an initial commit to get you started
+- **Helpful Analogies**: Explains version tracking as an "automatic Save Game feature for your code"
+- **Smart Detection**: Automatically detects when no repository exists and offers to create one
 
 ## Requirements
 

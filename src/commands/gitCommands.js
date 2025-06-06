@@ -151,18 +151,6 @@ class GitCommands {
       throw new Error("Commit not found");
     }
 
-    // Show confirmation dialog first
-    const confirmRestore = await vscode.window.showInformationMessage(
-      `Are you sure you want to restore to Version ${commit.version}?\n\nThis will create a new commit with the state of Version ${commit.version}, preserving all existing history.`,
-      { modal: true },
-      "Restore Version",
-      "Cancel"
-    );
-
-    if (confirmRestore !== "Restore Version") {
-      return;
-    }
-
     vscode.window.showInformationMessage(constants.MESSAGES.RESTORING_VERSION);
 
     try {
@@ -310,6 +298,25 @@ class GitCommands {
           `${constants.EXTENSION_NAME}: Failed to save changes: ${error.message}`
         );
       }
+    }
+  }
+
+  /**
+   * Set up version tracking for the current workspace
+   * Creates a new Git repository with friendly user guidance
+   */
+  async setupVersionTracking() {
+    try {
+      await this.gitService.createNewRepository();
+
+      // Trigger a refresh of any open TimeLad views to show the new repository
+      vscode.commands.executeCommand(constants.COMMANDS.REFRESH_GIT_HISTORY);
+    } catch (error) {
+      // Error is already handled in createNewRepository
+      console.error(
+        `${constants.EXTENSION_NAME}: Setup version tracking failed:`,
+        error
+      );
     }
   }
 }
