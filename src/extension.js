@@ -51,6 +51,11 @@ function activate(context) {
       constants.COMMANDS.RESTORE_VERSION,
       (commit, repoPath) => gitCommands.restoreVersion(commit, repoPath)
     ),
+
+    // Toggle Expert Mode command
+    vscode.commands.registerCommand(constants.COMMANDS.TOGGLE_EXPERT_MODE, () =>
+      gitCommands.toggleExpertMode()
+    ),
   ];
 
   // Add all disposables to context

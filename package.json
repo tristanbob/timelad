@@ -45,6 +45,10 @@
       {
         "command": "timelad.restoreVersion",
         "title": "TimeLad: Restore Version"
+      },
+      {
+        "command": "timelad.toggleExpertMode",
+        "title": "TimeLad: Toggle Expert Mode"
       }
     ],
     "menus": {
@@ -73,6 +77,17 @@
           "type": "webview"
         }
       ]
+    },
+    "configuration": {
+      "title": "TimeLad",
+      "properties": {
+        "timelad.expertMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable expert mode to show detailed Git information and understand how the extension works",
+          "order": 1
+        }
+      }
     }
   },
   "scripts": {

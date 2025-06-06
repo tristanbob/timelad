@@ -56,8 +56,12 @@ class GitCommands {
         }
       );
 
+      // Check if expert mode is enabled
+      const config = vscode.workspace.getConfiguration("timelad");
+      const expertMode = config.get("expertMode", false);
+
       // Set the HTML content
-      panel.webview.html = getCommitHistoryTemplate(commits);
+      panel.webview.html = getCommitHistoryTemplate(commits, expertMode);
 
       // Handle messages from the webview
       panel.webview.onDidReceiveMessage(async (message) => {
@@ -124,7 +128,15 @@ class GitCommands {
       }
     );
 
-    panel.webview.html = getCommitDetailsTemplate(commit, commitDetails);
+    // Check if expert mode is enabled
+    const config = vscode.workspace.getConfiguration("timelad");
+    const expertMode = config.get("expertMode", false);
+
+    panel.webview.html = getCommitDetailsTemplate(
+      commit,
+      commitDetails,
+      expertMode
+    );
   }
 
   /**
@@ -199,9 +211,14 @@ class GitCommands {
               }
             );
 
+            // Check if expert mode is enabled
+            const config = vscode.workspace.getConfiguration("timelad");
+            const expertMode = config.get("expertMode", false);
+
             panel.webview.html = getCommitDetailsTemplate(
               commit,
-              commitDetails
+              commitDetails,
+              expertMode
             );
           } catch (error) {
             vscode.window.showErrorMessage(
@@ -236,6 +253,39 @@ class GitCommands {
     } catch (error) {
       vscode.window.showErrorMessage(
         `${constants.EXTENSION_NAME}: ${error.message}`
+      );
+    }
+  }
+
+  /**
+   * Toggle expert mode setting
+   */
+  async toggleExpertMode() {
+    try {
+      const config = vscode.workspace.getConfiguration("timelad");
+      const currentMode = config.get("expertMode", false);
+      const newMode = !currentMode;
+
+      await config.update(
+        "expertMode",
+        newMode,
+        vscode.ConfigurationTarget.Global
+      );
+
+      const modeText = newMode ? "enabled" : "disabled";
+      vscode.window.showInformationMessage(
+        `${constants.EXTENSION_NAME}: Expert mode ${modeText}. ${
+          newMode
+            ? "You will now see detailed Git information and extension internals."
+            : "Simplified view restored."
+        }`
+      );
+
+      // Trigger a refresh of any open TimeLad views
+      vscode.commands.executeCommand(constants.COMMANDS.REFRESH_GIT_HISTORY);
+    } catch (error) {
+      vscode.window.showErrorMessage(
+        `${constants.EXTENSION_NAME}: Failed to toggle expert mode: ${error.message}`
       );
     }
   }

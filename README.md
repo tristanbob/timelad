@@ -33,7 +33,24 @@ TimeLad provides enhanced commands for interacting with Git repositories:
 
 ## Extension Settings
 
-This extension does not add any settings.
+This extension contributes the following settings:
+
+- `timelad.expertMode`: Enable expert mode to show detailed Git information and understand how the extension works (default: `false`)
+
+### Expert Mode
+
+Expert mode provides additional insights into how TimeLad works under the hood:
+
+- **Git Command Details**: See the exact Git commands being executed
+- **Extension Internals**: Understand how data is fetched and cached
+- **Version Calculation Logic**: See how version numbers are calculated
+- **Caching Information**: View caching strategies for performance optimization
+
+**Enable Expert Mode:**
+
+- Use the Command Palette: "TimeLad: Toggle Expert Mode"
+- Click the ⚙️/🔧 button in the TimeLad sidebar
+- Or manually set `timelad.expertMode: true` in your VS Code settings
 
 ## Known Issues
 

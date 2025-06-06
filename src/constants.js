@@ -26,6 +26,7 @@ module.exports = {
     LIST_COMMITS: "timelad.listCommits",
     REFRESH_GIT_HISTORY: "timelad.refreshGitHistory",
     RESTORE_VERSION: "timelad.restoreVersion",
+    TOGGLE_EXPERT_MODE: "timelad.toggleExpertMode",
   },
 
   // Git command templates

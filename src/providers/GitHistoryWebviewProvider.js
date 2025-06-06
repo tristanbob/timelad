@@ -59,6 +59,9 @@ class GitHistoryWebviewProvider {
       case "restoreVersion":
         await this.restoreVersion(message.hash);
         break;
+      case "toggleExpertMode":
+        await this.toggleExpertMode();
+        break;
       default:
         console.warn(
           `${constants.EXTENSION_NAME}: Unknown webview message command: ${message.command}`
@@ -133,7 +136,44 @@ class GitHistoryWebviewProvider {
       }
     );
 
-    panel.webview.html = getCommitDetailsTemplate(commit, commitDetails);
+    // Check if expert mode is enabled
+    const config = vscode.workspace.getConfiguration("timelad");
+    const expertMode = config.get("expertMode", false);
+
+    panel.webview.html = getCommitDetailsTemplate(
+      commit,
+      commitDetails,
+      expertMode
+    );
+  }
+
+  /**
+   * Toggle expert mode setting
+   */
+  async toggleExpertMode() {
+    try {
+      const config = vscode.workspace.getConfiguration("timelad");
+      const currentMode = config.get("expertMode", false);
+      const newMode = !currentMode;
+
+      await config.update(
+        "expertMode",
+        newMode,
+        vscode.ConfigurationTarget.Global
+      );
+
+      // Refresh the view to show the new mode
+      await this.refresh();
+
+      const modeText = newMode ? "enabled" : "disabled";
+      vscode.window.showInformationMessage(
+        `${constants.EXTENSION_NAME}: Expert mode ${modeText}`
+      );
+    } catch (error) {
+      vscode.window.showErrorMessage(
+        `${constants.EXTENSION_NAME}: Failed to toggle expert mode: ${error.message}`
+      );
+    }
   }
 
   /**
@@ -156,8 +196,12 @@ class GitHistoryWebviewProvider {
         constants.MAX_COMMITS_SIDEBAR
       );
 
+      // Check if expert mode is enabled
+      const config = vscode.workspace.getConfiguration("timelad");
+      const expertMode = config.get("expertMode", false);
+
       // Update webview with commit data
-      this.view.webview.html = getSidebarTemplate(this.commits);
+      this.view.webview.html = getSidebarTemplate(this.commits, expertMode);
     } catch (error) {
       console.error(
         `${constants.EXTENSION_NAME}: Error refreshing commits:`,
