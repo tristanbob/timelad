@@ -1,0 +1,10 @@
+{
+  "require": ["test/setup.js"],
+  "recursive": true,
+  "timeout": 10000,
+  "reporter": "spec",
+  "colors": true,
+  "exit": true,
+  "grep": "",
+  "spec": "src/**/*.test.js"
+}
