@@ -147,6 +147,15 @@ async function runSimpleTests() {
       );
       console.log("✓ COMMIT_EMPTY constant test passed");
     },
+
+    "Constants include rev-parse HEAD command": () => {
+      assert.ok(constants.GIT_COMMANDS.REV_PARSE_HEAD);
+      assert.strictEqual(
+        constants.GIT_COMMANDS.REV_PARSE_HEAD,
+        "git rev-parse HEAD"
+      );
+      console.log("✓ REV_PARSE_HEAD constant test passed");
+    },
   };
 
   let passed = 0;

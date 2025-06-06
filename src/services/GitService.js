@@ -334,28 +334,27 @@ class GitService {
         }
       }
 
-      // Force checkout the specific commit's files to working directory
-      const checkoutCommand = constants.GIT_COMMANDS.CHECKOUT_FILES.replace(
-        "%s",
-        commit.hash
-      );
-      await this.executeGitCommand(checkoutCommand, repoPath);
-
-      // Add all changes (this will stage the restored files)
-      await this.executeGitCommand(constants.GIT_COMMANDS.ADD_ALL, repoPath);
-
-      // Check if there are any changes to commit after staging
-      const { stdout: finalDiffOutput } = await this.executeGitCommand(
-        constants.GIT_COMMANDS.DIFF_CACHED,
+      // Get the current HEAD commit hash to compare
+      const { stdout: currentHead } = await this.executeGitCommand(
+        constants.GIT_COMMANDS.REV_PARSE_HEAD,
         repoPath
       );
+      const currentHeadHash = currentHead.trim();
 
-      // If no changes detected, it means we're already at this state
-      // But still create a restore commit to document the action
-      if (!finalDiffOutput.trim()) {
-        // Create an empty commit to document the restore action
+      // If we're trying to restore to the current commit, create an empty commit anyway
+      if (commit.hash === currentHeadHash) {
         await this.createEmptyRestoreCommit(commit, repoPath);
       } else {
+        // Restore files from the target commit
+        const checkoutCommand = constants.GIT_COMMANDS.CHECKOUT_FILES.replace(
+          "%s",
+          commit.hash
+        );
+        await this.executeGitCommand(checkoutCommand, repoPath);
+
+        // Stage all changes
+        await this.executeGitCommand(constants.GIT_COMMANDS.ADD_ALL, repoPath);
+
         // Create commit with the restored changes
         await this.createRestoreCommit(commit, repoPath);
       }
