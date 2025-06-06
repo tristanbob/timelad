@@ -29,6 +29,8 @@ module.exports = {
     TOGGLE_EXPERT_MODE: "timelad.toggleExpertMode",
     SAVE_CHANGES: "timelad.saveChanges",
     SETUP_VERSION_TRACKING: "timelad.setupVersionTracking",
+    SAVE_TO_GITHUB: "timelad.saveToGitHub",
+    LOAD_FROM_GITHUB: "timelad.loadFromGitHub",
   },
 
   // Git command templates
@@ -69,6 +71,11 @@ module.exports = {
     REPO_CREATED_SUCCESS:
       "🎉 Awesome! Your project is now set up for version tracking. You can see your work history in the TimeLad sidebar!",
     SETTING_UP_VERSION_TRACKING: "Setting up version tracking...",
+    SAVING_TO_GITHUB: "Saving to GitHub...",
+    GITHUB_SAVE_SUCCESS: "Successfully saved to GitHub!",
+    GITHUB_REPO_CREATED: "GitHub repository created successfully!",
+    LOADING_FROM_GITHUB: "Loading from GitHub...",
+    GITHUB_LOAD_SUCCESS: "Successfully loaded from GitHub!",
   },
 
   // Error messages
@@ -86,6 +93,11 @@ module.exports = {
     SHOW_COMMIT_DETAILS_FAILED: "Error showing commit details",
     NO_WORKSPACE_FOLDER: "Please open a folder in VS Code first.",
     REPO_CREATION_FAILED: "Could not set up version tracking",
+    GITHUB_AUTH_FAILED:
+      "GitHub authentication failed. Please check your token.",
+    GITHUB_SAVE_FAILED: "Failed to save to GitHub",
+    GITHUB_REPO_CREATE_FAILED: "Failed to create GitHub repository",
+    GITHUB_LOAD_FAILED: "Failed to load from GitHub",
   },
 
   // File paths

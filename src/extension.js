@@ -66,6 +66,16 @@ function activate(context) {
       constants.COMMANDS.SETUP_VERSION_TRACKING,
       () => gitCommands.setupVersionTracking()
     ),
+
+    // Save to GitHub command
+    vscode.commands.registerCommand(constants.COMMANDS.SAVE_TO_GITHUB, () =>
+      gitCommands.saveToGitHub()
+    ),
+
+    // Load from GitHub command
+    vscode.commands.registerCommand(constants.COMMANDS.LOAD_FROM_GITHUB, () =>
+      gitCommands.loadFromGitHub()
+    ),
   ];
 
   // Add all disposables to context

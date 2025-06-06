@@ -21,7 +21,9 @@
     "onCommand:timelad.showGitHistory",
     "onCommand:timelad.listCommits",
     "onCommand:timelad.saveChanges",
-    "onCommand:timelad.setupVersionTracking"
+    "onCommand:timelad.setupVersionTracking",
+    "onCommand:timelad.saveToGitHub",
+    "onCommand:timelad.loadFromGitHub"
   ],
   "main": "./src/extension.js",
   "icon": "images/icon.svg",
@@ -59,6 +61,14 @@
       {
         "command": "timelad.setupVersionTracking",
         "title": "TimeLad: Set Up Version Tracking"
+      },
+      {
+        "command": "timelad.saveToGitHub",
+        "title": "TimeLad: Save to GitHub"
+      },
+      {
+        "command": "timelad.loadFromGitHub",
+        "title": "TimeLad: Load from GitHub"
       }
     ],
     "menus": {
@@ -96,6 +106,12 @@
           "default": false,
           "description": "Enable expert mode to show detailed Git information and understand how the extension works",
           "order": 1
+        },
+        "timelad.githubToken": {
+          "type": "string",
+          "default": "",
+          "description": "GitHub Personal Access Token for repository operations",
+          "order": 2
         }
       }
     }

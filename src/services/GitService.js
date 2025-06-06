@@ -795,29 +795,30 @@ After installing Git, please restart VS Code.`;
   }
 
   /**
-   * Offer to create a new repository when none exists
+   * Offer to create a new repository or load from GitHub when none exists
    * Uses friendly, non-technical language to explain what this means
-   * @returns {Promise<boolean>} True if user wants to create repository
+   * @returns {Promise<string|null>} Action to take or null if cancelled
    */
   async offerToCreateRepository() {
     const message = `🚀 Hey there! It looks like this folder isn't set up for tracking your work history yet.
 
-Would you like TimeLad to set up version tracking for this project? This will help you:
-• Keep track of all the changes you make
-• Go back to previous versions if something goes wrong  
-• See the timeline of your work
-• Never lose your progress again
-
-Think of it like having an automatic "Save Game" feature for your code!`;
+What would you like to do?`;
 
     const result = await vscode.window.showInformationMessage(
       message,
       { modal: true },
-      "Yes, Set Up Version Tracking",
+      "Set Up Version Tracking",
+      "Load from GitHub",
       "Not Right Now"
     );
 
-    return result === "Yes, Set Up Version Tracking";
+    if (result === "Load from GitHub") {
+      // Trigger the Load from GitHub command
+      vscode.commands.executeCommand("timelad.loadFromGitHub");
+      return null; // Don't create a new repo
+    }
+
+    return result === "Set Up Version Tracking" ? "create" : null;
   }
 
   /**
@@ -827,6 +828,13 @@ Think of it like having an automatic "Save Game" feature for your code!`;
    */
   async createNewRepository() {
     try {
+      // First, offer the user the choice between creating new repo or loading from GitHub
+      const userChoice = await this.offerToCreateRepository();
+
+      if (userChoice !== "create") {
+        // User cancelled or chose to load from GitHub (handled in offerToCreateRepository)
+        return null;
+      }
       // Get the current workspace folder
       const workspaceFolders = vscode.workspace.workspaceFolders;
       if (!workspaceFolders || workspaceFolders.length === 0) {

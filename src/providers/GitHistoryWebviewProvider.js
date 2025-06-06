@@ -76,6 +76,10 @@ class GitHistoryWebviewProvider {
       case "createRepository":
         await this.createRepository();
         break;
+      case "loadFromGitHub":
+        // Execute the Load from GitHub command
+        vscode.commands.executeCommand("timelad.loadFromGitHub");
+        break;
       case "openUrl":
         if (message.url) {
           await vscode.env.openExternal(vscode.Uri.parse(message.url));
@@ -218,7 +222,14 @@ class GitHistoryWebviewProvider {
       this.view.webview.html = getLoadingTemplate();
 
       // Create the repository
-      await this.gitService.createNewRepository();
+      const result = await this.gitService.createNewRepository();
+
+      if (result === null) {
+        // User cancelled or chose to load from GitHub
+        // Just refresh to show the original state
+        await this.refresh();
+        return;
+      }
 
       // Refresh the view to show the new repository
       await this.refresh();
@@ -597,6 +608,10 @@ class GitHistoryWebviewProvider {
                       ✨ Set Up Version Tracking
                   </button>
                   <br>
+                  <button class="setup-btn" onclick="loadFromGitHub()" style="background: var(--vscode-terminal-ansiBlue); margin-top: 8px;">
+                      📥 Load from GitHub
+                  </button>
+                  <br>
                   <button class="setup-btn secondary" onclick="refreshView()">
                       🔄 Check Again
                   </button>
@@ -609,6 +624,12 @@ class GitHistoryWebviewProvider {
               function setupVersionTracking() {
                   vscode.postMessage({
                       command: 'createRepository'
+                  });
+              }
+
+              function loadFromGitHub() {
+                  vscode.postMessage({
+                      command: 'loadFromGitHub'
                   });
               }
 
