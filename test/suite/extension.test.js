@@ -53,11 +53,6 @@ describe("Extension Integration Tests", () => {
 
     // Test default values
     assert.strictEqual(
-      config.get("expertMode"),
-      false,
-      "Expert mode should default to false"
-    );
-    assert.strictEqual(
       config.get("githubToken"),
       "",
       "GitHub token should default to empty string"

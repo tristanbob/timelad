@@ -90,65 +90,10 @@ const baseStyles = `
     background: var(--vscode-button-hoverBackground);
   }
   
-  .expert-badge {
-    background-color: var(--vscode-terminal-ansiYellow);
-    color: var(--vscode-editor-background);
-    padding: 2px 6px;
-    border-radius: 3px;
-    font-size: 0.7em;
-    font-weight: bold;
-    margin-left: 8px;
-  }
-  
-  .expert-info {
-    font-size: 0.8em;
-    color: var(--vscode-descriptionForeground);
-    font-style: italic;
-    margin: 4px 0 0 0;
-    padding: 8px;
-    background-color: var(--vscode-editor-inactiveSelectionBackground);
-    border-radius: 4px;
-    border-left: 3px solid var(--vscode-terminal-ansiYellow);
-  }
-  
-  .uncommitted-section .expert-info {
-    background-color: var(--vscode-editor-background);
-    color: var(--vscode-editor-foreground);
-    border-left: 3px solid var(--vscode-terminal-ansiRed);
-  }
-  
   .header-buttons {
     display: flex;
     gap: 8px;
     align-items: center;
-  }
-  
-  .toggle-expert-btn {
-    background: var(--vscode-button-secondaryBackground);
-    color: var(--vscode-button-secondaryForeground);
-    border: 1px solid var(--vscode-button-border);
-    border-radius: 4px;
-    padding: 6px 8px;
-    cursor: pointer;
-    font-size: 12px;
-    display: flex;
-    align-items: center;
-    transition: all 0.2s ease;
-  }
-  
-  .toggle-expert-btn:hover {
-    background: var(--vscode-button-secondaryHoverBackground);
-  }
-  
-  .toggle-expert-btn.expert-active {
-    background: var(--vscode-terminal-ansiYellow);
-    color: var(--vscode-editor-background);
-    border-color: var(--vscode-terminal-ansiYellow);
-  }
-  
-  .toggle-expert-btn.expert-active:hover {
-    background: var(--vscode-terminal-ansiYellow);
-    opacity: 0.9;
   }
   
   .uncommitted-section {
@@ -255,6 +200,59 @@ const baseStyles = `
     font-style: italic;
     padding: 20px;
   }
+  
+  /* Tooltip styles for version numbers */
+  .commit-version {
+    position: relative;
+    cursor: pointer;
+  }
+  
+  .commit-version:hover::after {
+    content: attr(data-hash);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.8em;
+    white-space: nowrap;
+    z-index: 1000;
+    border: 1px solid var(--vscode-panel-border);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    font-family: var(--vscode-editor-font-family, monospace);
+  }
+  
+  .commit-version:hover::before {
+    content: '';
+    position: absolute;
+    bottom: 95%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: var(--vscode-panel-border);
+    z-index: 999;
+  }
+  
+  .copy-feedback {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background-color: var(--vscode-terminal-ansiGreen);
+    color: var(--vscode-editor-background);
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    z-index: 10000;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  
+  .copy-feedback.show {
+    opacity: 1;
+  }
 `;
 
 /**
@@ -291,6 +289,13 @@ const commitListStyles = `
     margin-right: 8px;
     font-weight: bold;
     font-size: 0.85em;
+    position: relative;
+    cursor: pointer;
+    user-select: none;
+  }
+  
+  .commit-version:active {
+    transform: scale(0.95);
   }
   
   .commit-author {
@@ -311,8 +316,6 @@ const commitListStyles = `
     line-height: 1.4;
     font-size: 0.9em;
   }
-  
-
   
   .commit-actions {
     margin-top: 8px;
@@ -392,42 +395,6 @@ const commitListStyles = `
     color: var(--vscode-descriptionForeground);
     margin: 0;
   }
-  
-  .expert-details {
-    margin-top: 8px;
-    padding: 8px;
-    background-color: var(--vscode-editor-background);
-    border-radius: 4px;
-    border-left: 3px solid var(--vscode-terminal-ansiYellow);
-    font-size: 0.8em;
-  }
-  
-  .expert-details .label {
-    font-weight: bold;
-    color: var(--vscode-terminal-ansiYellow);
-    display: inline-block;
-    min-width: 80px;
-  }
-  
-  .expert-details code {
-    background-color: var(--vscode-textCodeBlock-background);
-    color: var(--vscode-editor-foreground);
-    padding: 2px 4px;
-    border-radius: 3px;
-    font-family: var(--vscode-editor-font-family, 'Courier New', monospace);
-    font-size: 0.9em;
-    word-break: break-all;
-  }
-  
-  .expert-details .git-hash {
-    margin-bottom: 4px;
-  }
-  
-  .expert-details .git-command,
-  .expert-details .version-calc,
-  .expert-details .cache-info {
-    margin-top: 4px;
-  }
 `;
 
 /**
@@ -464,6 +431,42 @@ const commitDetailsStyles = `
     border-radius: 4px;
     font-weight: bold;
     display: inline-block;
+    position: relative;
+    cursor: pointer;
+    user-select: none;
+  }
+  
+  .version-badge:hover::after {
+    content: attr(data-hash);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.8em;
+    white-space: nowrap;
+    z-index: 1000;
+    border: 1px solid var(--vscode-panel-border);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    font-family: var(--vscode-editor-font-family, monospace);
+  }
+  
+  .version-badge:hover::before {
+    content: '';
+    position: absolute;
+    bottom: 95%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: var(--vscode-panel-border);
+    z-index: 999;
+  }
+  
+  .version-badge:active {
+    transform: scale(0.95);
   }
   
   pre {
@@ -501,13 +504,54 @@ const commonJavaScript = `
     vscode.postMessage({ command: 'restoreVersion', hash: hash });
   }
   
-  function toggleExpertMode() {
-    vscode.postMessage({ command: 'toggleExpertMode' });
-  }
-  
   function saveChanges() {
     vscode.postMessage({ command: 'saveChanges' });
   }
+  
+  function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+      showCopyFeedback();
+    }).catch(() => {
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      showCopyFeedback();
+    });
+  }
+  
+  function showCopyFeedback() {
+    let feedback = document.querySelector('.copy-feedback');
+    if (!feedback) {
+      feedback = document.createElement('div');
+      feedback.className = 'copy-feedback';
+      feedback.textContent = 'Git hash copied to clipboard!';
+      document.body.appendChild(feedback);
+    }
+    
+    feedback.classList.add('show');
+    setTimeout(() => {
+      feedback.classList.remove('show');
+    }, 2000);
+  }
+  
+  function copyVersionHash(event, hash) {
+    event.stopPropagation();
+    copyToClipboard(hash);
+  }
+  
+  // Add click handlers for version numbers
+  document.addEventListener('click', function(event) {
+    if (event.target.classList.contains('commit-version') || event.target.classList.contains('version-badge')) {
+      const hash = event.target.getAttribute('data-hash');
+      if (hash) {
+        copyVersionHash(event, hash);
+      }
+    }
+  });
 `;
 
 /**
@@ -577,13 +621,9 @@ function getLoadingTemplate() {
 /**
  * Generate uncommitted changes section HTML
  * @param {Object} uncommittedChanges Uncommitted changes information
- * @param {boolean} expertMode Whether expert mode is enabled
  * @returns {string} HTML for uncommitted changes section
  */
-function generateUncommittedChangesSection(
-  uncommittedChanges,
-  expertMode = false
-) {
+function generateUncommittedChangesSection(uncommittedChanges) {
   if (!uncommittedChanges || !uncommittedChanges.hasChanges) {
     return "";
   }
@@ -636,16 +676,6 @@ function generateUncommittedChangesSection(
           ? `<div class="changes-summary">${uncommittedChanges.summary}</div>`
           : ""
       }
-      ${
-        expertMode
-          ? `
-        <div class="expert-info" style="margin-top: 12px;">
-          <strong>Expert Info:</strong> Changes detected via <code>git status --porcelain</code>. 
-          Save will execute <code>git add .</code> followed by <code>git commit</code> with AI-generated message.
-        </div>
-      `
-          : ""
-      }
     </div>
   `;
 }
@@ -654,44 +684,19 @@ function generateUncommittedChangesSection(
  * Generate commit list item HTML
  * @param {Object} commit Commit object
  * @param {number} index Index of commit in the list
- * @param {boolean} expertMode Whether expert mode is enabled
  * @returns {string} HTML for commit list item
  */
-function generateCommitListItem(commit, index, expertMode = false) {
-  const expertDetails = expertMode
-    ? `
-    <div class="expert-details">
-      <div class="git-hash">
-        <span class="label">Git Hash:</span> 
-        <code class="hash">${commit.hash}</code>
-      </div>
-      <div class="git-command">
-        <span class="label">Fetch Command:</span> 
-        <code>git log -n 30 --pretty=format:"%h|%an|%ad|%s" --date=format:"%Y-%m-%d %H:%M:%S"</code>
-      </div>
-      <div class="version-calc">
-        <span class="label">Version Logic:</span> 
-        <code>Total commits (${commit.version + index}) - Index (${index}) = v${
-        commit.version
-      }</code>
-      </div>
-      <div class="cache-info">
-        <span class="label">Caching:</span> 
-        <code>5min cache via Map() in GitService</code>
-      </div>
-    </div>
-  `
-    : "";
-
+function generateCommitListItem(commit, index) {
   return `
     <li class="commit-item" data-hash="${commit.hash}">
         <div>
-            <span class="commit-version">v${commit.version}</span>
+            <span class="commit-version" data-hash="${
+              commit.hash
+            }" title="Click to copy git hash">v${commit.version}</span>
             <span class="commit-author">${commit.author}</span>
             <span class="commit-date">${commit.date}</span>
         </div>
         <div class="commit-subject">${commit.subject}</div>
-        ${expertDetails}
         <div class="commit-actions">
             <button class="view-btn" onclick="viewCommit('${commit.hash}')">
                 👁️ View Details
@@ -713,23 +718,16 @@ function generateCommitListItem(commit, index, expertMode = false) {
 /**
  * Generate sidebar webview content
  * @param {Array} commits Array of commit objects
- * @param {boolean} expertMode Whether expert mode is enabled
  * @param {Object} uncommittedChanges Uncommitted changes information
  * @returns {string} HTML content for sidebar
  */
-function getSidebarTemplate(
-  commits,
-  expertMode = false,
-  uncommittedChanges = null
-) {
+function getSidebarTemplate(commits, uncommittedChanges = null) {
   const commitListHTML =
     commits.length === 0
       ? '<div class="no-commits">No commits found in this repository.</div>'
       : `<ul class="commit-list" id="commitList">
         ${commits
-          .map((commit, index) =>
-            generateCommitListItem(commit, index, expertMode)
-          )
+          .map((commit, index) => generateCommitListItem(commit, index))
           .join("")}
        </ul>`;
 
@@ -756,28 +754,10 @@ function getSidebarTemplate(
         
         <div class="header">
             <div>
-                <h1>📊 TimeLad ${
-                  expertMode
-                    ? '<span class="expert-badge">Expert Mode</span>'
-                    : ""
-                }</h1>
+                <h1>📊 TimeLad</h1>
                 <p class="commit-count">${commits.length} recent commits</p>
-                ${
-                  expertMode
-                    ? `
-                    <p class="expert-info">
-                        Extension is using VS Code Git API to fetch repository data and executing git commands via child_process.
-                    </p>
-                `
-                    : ""
-                }
             </div>
             <div class="header-buttons">
-                <button class="toggle-expert-btn ${
-                  expertMode ? "expert-active" : ""
-                }" onclick="toggleExpertMode()" title="Toggle Expert Mode">
-                    ${expertMode ? "🔧" : "⚙️"}
-                </button>
                 <button class="refresh-btn" onclick="refreshHistory()">
                     🔄 Refresh
                 </button>
@@ -786,7 +766,7 @@ function getSidebarTemplate(
         
         <input type="text" class="search-box" placeholder="🔍 Filter commits by message, author, or version..." id="commitFilter">
         
-        ${generateUncommittedChangesSection(uncommittedChanges, expertMode)}
+        ${generateUncommittedChangesSection(uncommittedChanges)}
         
         ${commitListHTML}
 
@@ -803,10 +783,9 @@ function getSidebarTemplate(
  * Generate commit details webview content
  * @param {Object} commit Commit object
  * @param {string} commitDetails Detailed commit information from git show
- * @param {boolean} expertMode Whether expert mode is enabled
  * @returns {string} HTML content for commit details
  */
-function getCommitDetailsTemplate(commit, commitDetails, expertMode = false) {
+function getCommitDetailsTemplate(commit, commitDetails) {
   return `
     <!DOCTYPE html>
     <html>
@@ -828,25 +807,9 @@ function getCommitDetailsTemplate(commit, commitDetails, expertMode = false) {
             <span class="alpha-warning-text">ALPHA VERSION - Testing Only - Use with Disposable Data</span>
         </div>
         
-        <h1><span class="version-badge">Version ${commit.version}</span> ${
-    expertMode
-      ? '<span class="expert-badge" style="margin-left: 10px;">Expert Mode</span>'
-      : ""
-  }</h1>
-        
-        ${
-          expertMode
-            ? `
-            <div class="expert-details" style="margin: 16px 0; background-color: var(--vscode-editor-inactiveSelectionBackground);">
-                <h3 style="color: var(--vscode-terminal-ansiYellow); margin-top: 0;">🔧 Extension Internals</h3>
-                <p><strong>Data Source:</strong> VS Code Git Extension API + child_process git commands</p>
-                <p><strong>Command executed:</strong> <code>git show ${commit.hash}</code></p>
-                <p><strong>Caching:</strong> Results cached for 5 minutes to improve performance</p>
-                <p><strong>Version calculation:</strong> Total commits - current index = v${commit.version}</p>
-            </div>
-        `
-            : ""
-        }
+        <h1><span class="version-badge" data-hash="${
+          commit.hash
+        }" title="Click to copy git hash">Version ${commit.version}</span></h1>
         
         <div class="detail-item">
             <span class="label">Description:</span> ${commit.subject}
@@ -868,6 +831,10 @@ function getCommitDetailsTemplate(commit, commitDetails, expertMode = false) {
           commitDetails.split("diff --git")[0] ||
           "No detailed changes available."
         }</pre>
+        
+        <script>
+            ${commonJavaScript}
+        </script>
     </body>
     </html>
   `;
@@ -876,18 +843,15 @@ function getCommitDetailsTemplate(commit, commitDetails, expertMode = false) {
 /**
  * Generate full page commit history webview content
  * @param {Array} commits Array of commit objects
- * @param {boolean} expertMode Whether expert mode is enabled
  * @returns {string} HTML content for full page history
  */
-function getCommitHistoryTemplate(commits, expertMode = false) {
+function getCommitHistoryTemplate(commits) {
   const commitListHTML =
     commits.length === 0
       ? '<div class="no-commits">No commits found in this repository.</div>'
       : `<ul class="commit-list" id="commitList">
         ${commits
-          .map((commit, index) =>
-            generateCommitListItem(commit, index, expertMode)
-          )
+          .map((commit, index) => generateCommitListItem(commit, index))
           .join("")}
        </ul>`;
 
@@ -925,9 +889,7 @@ function getCommitHistoryTemplate(commits, expertMode = false) {
             <span class="alpha-warning-text">ALPHA VERSION - Testing Only - Use with Disposable Data</span>
         </div>
         
-        <h1>📊 TimeLad History ${
-          expertMode ? '<span class="expert-badge">Expert Mode</span>' : ""
-        }</h1>
+        <h1>📊 TimeLad History</h1>
         
         <input type="text" class="search-box" placeholder="🔍 Filter commits by message, author, or version..." id="commitFilter">
         

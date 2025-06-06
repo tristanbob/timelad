@@ -274,6 +274,93 @@ async waitForGitReady(maxAttempts = 10) {
 4. **Plugin Architecture**: Allow third-party extensions
 5. **Internationalization**: Multi-language support
 
+## Repository Scanning Enhancement (Latest)
+
+### Problem
+
+Users were experiencing the repository initialization UI appearing even when a git repository already existed, especially when opening TimeLad quickly. This happened because the original git detection relied solely on VS Code's Git extension being ready, which could take time to initialize.
+
+### Solution: Multi-Layered Repository Detection
+
+Implemented a robust "Scanning folder..." approach similar to VS Code's Source Control:
+
+#### 1. Enhanced GitService Methods
+
+- `scanForRepositories(maxDepth)`: Recursively scans workspace folders for `.git` directories
+- `scanFolderForGit()`: Deep folder scanning with intelligent filtering
+- `isGitRepository()`: Direct file system checks for git repositories
+- `getRepositoryPathRobust()`: Multi-method detection with caching
+- `hasRepositoryRobust()`: Enhanced repository existence check
+
+#### 2. Detection Strategy (in order of priority)
+
+1. **File System Scan**: Direct `.git` folder detection (fastest, most reliable)
+2. **Git Extension API**: VS Code's Git extension repositories
+3. **Git Command**: Direct `git rev-parse --git-dir` execution
+
+#### 3. GitHistoryWebviewProvider Enhancements
+
+- Added "Scanning folder..." UI state with animated progress bar
+- Proactive repository scanning during view initialization
+- Workspace change listeners for immediate repository detection
+- File system watchers for `.git` folder changes
+- Proper resource cleanup with dispose methods
+
+#### 4. Performance Optimizations
+
+- 5-second cache for repository detection results
+- Limited scan depth (2 levels) for speed
+- Reduced Git extension wait time (5 attempts vs 10)
+- Smart folder filtering (skip node_modules, build folders, hidden folders)
+
+#### 5. User Experience Improvements
+
+- Immediate feedback with scanning animation
+- Faster repository detection on extension activation
+- Automatic refresh when repositories are created/removed
+- No more false "no repository" states for existing repos
+
+### Technical Details
+
+The new detection system:
+
+```javascript
+// Method 1: File system scan (primary)
+const repositories = await this.scanForRepositories(2);
+
+// Method 2: Git extension fallback
+const api = gitExtension.getAPI(1);
+if (api && api.repositories.length > 0) { ... }
+
+// Method 3: Direct git command
+await this.executeGitCommand('git rev-parse --git-dir', workspacePath);
+```
+
+### Files Modified
+
+- `src/services/GitService.js`: Enhanced detection logic
+- `src/providers/GitHistoryWebviewProvider.js`: UI improvements and scanning state
+- `src/extension.js`: Proper resource disposal
+- `src/tests/GitService.test.js`: Updated tests for new behavior
+
+### Benefits
+
+- ✅ Eliminates false "no repository" states
+- ✅ Faster repository detection (file system vs API waiting)
+- ✅ More reliable detection independent of Git extension state
+- ✅ Better user feedback with scanning animations
+- ✅ Automatic detection of repository changes
+
+### Testing
+
+All unit tests pass with the new robust detection logic. The system gracefully handles:
+
+- Missing git installations
+- Uninitialized Git extensions
+- Multiple workspace folders
+- Nested repositories
+- File system permission issues
+
 ## Conclusion
 
 This refactoring transforms the TimeLad extension from a monolithic structure to a modular, maintainable, and extensible codebase. The new architecture follows established patterns and makes the code much easier to work with, test, and extend.

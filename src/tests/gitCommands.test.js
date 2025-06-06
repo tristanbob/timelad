@@ -150,17 +150,15 @@ describe("GitCommands", () => {
     });
 
     it("should create quick pick for commits", async () => {
-      sinon
-        .stub(gitCommands.gitService, "getSimpleCommits")
-        .resolves([
-          {
-            subject: "Test commit",
-            version: "1.0.0",
-            author: "Test User",
-            date: "2023-01-01",
-            hash: "abc123",
-          },
-        ]);
+      sinon.stub(gitCommands.gitService, "getSimpleCommits").resolves([
+        {
+          subject: "Test commit",
+          version: "1.0.0",
+          author: "Test User",
+          date: "2023-01-01",
+          hash: "abc123",
+        },
+      ]);
 
       await gitCommands.listCommits();
 
@@ -189,12 +187,6 @@ describe("GitCommands", () => {
   describe("loadFromGitHub", () => {
     it("should be a function", () => {
       assert.strictEqual(typeof gitCommands.loadFromGitHub, "function");
-    });
-  });
-
-  describe("toggleExpertMode", () => {
-    it("should be a function", () => {
-      assert.strictEqual(typeof gitCommands.toggleExpertMode, "function");
     });
   });
 

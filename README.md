@@ -57,22 +57,11 @@ TimeLad provides enhanced commands for interacting with Git repositories:
 
 This extension contributes the following settings:
 
-- `timelad.expertMode`: Enable expert mode to show detailed Git information and understand how the extension works (default: `false`)
+- `timelad.githubToken`: GitHub Personal Access Token for repository operations (default: empty string)
 
-### Expert Mode
+### Version Information
 
-Expert mode provides additional insights into how TimeLad works under the hood:
-
-- **Git Command Details**: See the exact Git commands being executed
-- **Extension Internals**: Understand how data is fetched and cached
-- **Version Calculation Logic**: See how version numbers are calculated
-- **Caching Information**: View caching strategies for performance optimization
-
-**Enable Expert Mode:**
-
-- Use the Command Palette: "TimeLad: Toggle Expert Mode"
-- Click the ⚙️/🔧 button in the TimeLad sidebar
-- Or manually set `timelad.expertMode: true` in your VS Code settings
+When you hover over any version number (like "v1", "v2", etc.) in the TimeLad interface, you'll see a tooltip showing the full Git hash for that commit. Click on any version number to copy the Git hash to your clipboard for easy reference.
 
 ## Known Issues
 

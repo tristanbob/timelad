@@ -26,7 +26,7 @@ module.exports = {
     LIST_COMMITS: "timelad.listCommits",
     REFRESH_GIT_HISTORY: "timelad.refreshGitHistory",
     RESTORE_VERSION: "timelad.restoreVersion",
-    TOGGLE_EXPERT_MODE: "timelad.toggleExpertMode",
+
     SAVE_CHANGES: "timelad.saveChanges",
     SETUP_VERSION_TRACKING: "timelad.setupVersionTracking",
     SAVE_TO_GITHUB: "timelad.saveToGitHub",
@@ -55,6 +55,8 @@ module.exports = {
     INIT_REPO: "git init",
     CONFIG_USER_NAME: 'git config user.name "%s"',
     CONFIG_USER_EMAIL: 'git config user.email "%s"',
+    RESET_HARD: "git reset --hard %s",
+    RESET_SOFT_HEAD: "git reset --soft HEAD@{1}",
   },
 
   // Messages

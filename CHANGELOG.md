@@ -2,6 +2,21 @@
 
 All notable changes to the "TimeLad" extension will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- Removed expert mode toggle functionality
+- Version numbers now show git hash in tooltip when hovering
+- Clicking on version numbers copies the git hash to clipboard
+- Simplified UI by removing expert mode toggle button and detailed technical information
+
+### Removed
+
+- Expert mode configuration setting
+- Expert mode toggle command
+- Technical details and git command information from UI
+
 ## [0.1.0] - 2024-12-19
 
 ### Added

@@ -16,6 +16,58 @@ class GitHistoryWebviewProvider {
     this.commits = [];
     this.uncommittedChanges = null;
     this.gitService = new GitService();
+    this.repositoryWatcher = null;
+
+    // Setup workspace change listeners for faster repository detection
+    this.setupWorkspaceListeners();
+  }
+
+  /**
+   * Setup listeners for workspace changes to detect repositories faster
+   */
+  setupWorkspaceListeners() {
+    // Listen for workspace folder changes
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      // Clear cache when workspace changes
+      this.gitService.clearCache();
+      // Refresh view if visible
+      if (this.view && this.view.visible) {
+        this.refresh();
+      }
+    });
+
+    // Listen for file system changes that might indicate git repository changes
+    const watcher = vscode.workspace.createFileSystemWatcher("**/.git/**");
+
+    watcher.onDidCreate(() => {
+      this.gitService.clearCache();
+      if (this.view && this.view.visible) {
+        setTimeout(() => this.refresh(), 500); // Small delay to let git finish
+      }
+    });
+
+    watcher.onDidDelete(() => {
+      this.gitService.clearCache();
+      if (this.view && this.view.visible) {
+        this.refresh();
+      }
+    });
+
+    this.repositoryWatcher = watcher;
+  }
+
+  /**
+   * Proactively scan for repositories (can be called during extension activation)
+   * @returns {Promise<boolean>} True if repository found
+   */
+  async proactivelyScanForRepositories() {
+    try {
+      // Do a quick scan to warm up the cache
+      return await this.gitService.hasRepository();
+    } catch (error) {
+      console.log(`TimeLad: Proactive scan failed: ${error.message}`);
+      return false;
+    }
   }
 
   async resolveWebviewView(webviewView) {
@@ -25,6 +77,14 @@ class GitHistoryWebviewProvider {
       enableScripts: true,
       localResourceRoots: [this.context.extensionUri],
     };
+
+    // Start a proactive scan to detect repositories early
+    this.proactivelyScanForRepositories().then((hasRepo) => {
+      // If we found a repo and the view is visible, refresh immediately
+      if (hasRepo && webviewView.visible) {
+        this.refresh();
+      }
+    });
 
     // Load initial content
     await this.refresh();
@@ -67,9 +127,7 @@ class GitHistoryWebviewProvider {
       case "restoreVersion":
         await this.restoreVersion(message.hash);
         break;
-      case "toggleExpertMode":
-        await this.toggleExpertMode();
-        break;
+
       case "saveChanges":
         await this.saveChanges();
         break;
@@ -147,44 +205,7 @@ class GitHistoryWebviewProvider {
       }
     );
 
-    // Check if expert mode is enabled
-    const config = vscode.workspace.getConfiguration("timelad");
-    const expertMode = config.get("expertMode", false);
-
-    panel.webview.html = getCommitDetailsTemplate(
-      commit,
-      commitDetails,
-      expertMode
-    );
-  }
-
-  /**
-   * Toggle expert mode setting
-   */
-  async toggleExpertMode() {
-    try {
-      const config = vscode.workspace.getConfiguration("timelad");
-      const currentMode = config.get("expertMode", false);
-      const newMode = !currentMode;
-
-      await config.update(
-        "expertMode",
-        newMode,
-        vscode.ConfigurationTarget.Global
-      );
-
-      // Refresh the view to show the new mode
-      await this.refresh();
-
-      const modeText = newMode ? "enabled" : "disabled";
-      vscode.window.showInformationMessage(
-        `${constants.EXTENSION_NAME}: Expert mode ${modeText}`
-      );
-    } catch (error) {
-      vscode.window.showErrorMessage(
-        `${constants.EXTENSION_NAME}: Failed to toggle expert mode: ${error.message}`
-      );
-    }
+    panel.webview.html = getCommitDetailsTemplate(commit, commitDetails);
   }
 
   /**
@@ -251,8 +272,8 @@ class GitHistoryWebviewProvider {
     // Clear cache on manual refresh
     this.gitService.clearCache();
 
-    // Show loading state
-    this.view.webview.html = getLoadingTemplate();
+    // Show scanning state (similar to VS Code Source Control)
+    this.view.webview.html = this.getScanningTemplate();
 
     try {
       // First check if git is installed
@@ -265,7 +286,7 @@ class GitHistoryWebviewProvider {
         return;
       }
 
-      // Check if repository exists
+      // Check if repository exists using enhanced scanning
       const hasRepo = await this.gitService.hasRepository();
 
       if (!hasRepo) {
@@ -283,14 +304,9 @@ class GitHistoryWebviewProvider {
       this.commits = commits;
       this.uncommittedChanges = uncommittedChanges;
 
-      // Check if expert mode is enabled
-      const config = vscode.workspace.getConfiguration("timelad");
-      const expertMode = config.get("expertMode", false);
-
       // Update webview with commit data and uncommitted changes
       this.view.webview.html = getSidebarTemplate(
         this.commits,
-        expertMode,
         this.uncommittedChanges
       );
     } catch (error) {
@@ -642,6 +658,105 @@ class GitHistoryWebviewProvider {
       </body>
       </html>
     `;
+  }
+
+  /**
+   * Get template for the scanning state (similar to VS Code Source Control)
+   * @returns {string} HTML template
+   */
+  getScanningTemplate() {
+    return `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>TimeLad: Scanning...</title>
+          <style>
+              body {
+                  font-family: var(--vscode-font-family);
+                  padding: 20px;
+                  color: var(--vscode-foreground);
+                  background-color: var(--vscode-editor-background);
+                  margin: 0;
+                  display: flex;
+                  justify-content: center;
+                  align-items: center;
+                  min-height: 100vh;
+                  flex-direction: column;
+                  text-align: center;
+              }
+              .scanning-container {
+                  max-width: 300px;
+                  padding: 30px;
+                  border-radius: 8px;
+                  background-color: var(--vscode-editor-inactiveSelectionBackground);
+                  border: 1px solid var(--vscode-panel-border);
+              }
+              .scanning-icon {
+                  font-size: 32px;
+                  margin-bottom: 20px;
+                  animation: pulse 1.5s ease-in-out infinite;
+              }
+              .scanning-title {
+                  font-size: 1.1em;
+                  color: var(--vscode-terminal-ansiBlue);
+                  margin: 0 0 10px 0;
+                  font-weight: 500;
+              }
+              .scanning-description {
+                  color: var(--vscode-descriptionForeground);
+                  line-height: 1.4;
+                  margin-bottom: 20px;
+                  font-size: 0.9em;
+              }
+              .progress-bar {
+                  width: 100%;
+                  height: 3px;
+                  background-color: var(--vscode-progressBar-background);
+                  border-radius: 2px;
+                  overflow: hidden;
+                  margin-top: 15px;
+              }
+              .progress-fill {
+                  height: 100%;
+                  background-color: var(--vscode-terminal-ansiBlue);
+                  animation: progress 2s ease-in-out infinite;
+              }
+              @keyframes pulse {
+                  0%, 100% { transform: scale(1); opacity: 0.7; }
+                  50% { transform: scale(1.1); opacity: 1; }
+              }
+              @keyframes progress {
+                  0% { transform: translateX(-100%); }
+                  100% { transform: translateX(100%); }
+              }
+          </style>
+      </head>
+      <body>
+          <div class="scanning-container">
+              <div class="scanning-icon">🔍</div>
+              <h2 class="scanning-title">Scanning folder...</h2>
+              <p class="scanning-description">
+                  Looking for git repositories in your workspace
+              </p>
+              <div class="progress-bar">
+                  <div class="progress-fill"></div>
+              </div>
+          </div>
+      </body>
+      </html>
+    `;
+  }
+
+  /**
+   * Dispose of resources
+   */
+  dispose() {
+    if (this.repositoryWatcher) {
+      this.repositoryWatcher.dispose();
+      this.repositoryWatcher = null;
+    }
   }
 }
 

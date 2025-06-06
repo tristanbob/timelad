@@ -13,6 +13,7 @@ const execPromise = util.promisify(exec);
 class GitService {
   constructor() {
     this.cache = new Map();
+    this.repositoryScanCache = new Map(); // Cache for repository scanning results
   }
 
   /**
@@ -94,6 +95,245 @@ class GitService {
   }
 
   /**
+   * Scan workspace folders for git repositories (similar to VS Code Source Control)
+   * This provides a more robust detection than relying only on Git extension
+   * @param {number} maxDepth Maximum depth to scan (default: 3)
+   * @returns {Promise<Array<string>>} Array of repository paths found
+   */
+  async scanForRepositories(maxDepth = 3) {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+      return [];
+    }
+
+    const repositories = [];
+    const scanPromises = workspaceFolders.map((folder) =>
+      this.scanFolderForGit(folder.uri.fsPath, maxDepth)
+    );
+
+    try {
+      const results = await Promise.all(scanPromises);
+      results.forEach((folderRepos) => {
+        repositories.push(...folderRepos);
+      });
+    } catch (error) {
+      console.log(`TimeLad: Error scanning for repositories: ${error.message}`);
+    }
+
+    return repositories;
+  }
+
+  /**
+   * Recursively scan a folder for git repositories
+   * @param {string} folderPath Path to scan
+   * @param {number} maxDepth Maximum depth to scan
+   * @param {number} currentDepth Current depth in recursion
+   * @returns {Promise<Array<string>>} Array of repository paths found
+   */
+  async scanFolderForGit(folderPath, maxDepth, currentDepth = 0) {
+    const repositories = [];
+
+    try {
+      // Check if this folder itself is a git repository
+      if (await this.isGitRepository(folderPath)) {
+        repositories.push(folderPath);
+        // If we found a repo, don't scan deeper (avoid nested repo confusion)
+        return repositories;
+      }
+
+      // If we haven't reached max depth, scan subdirectories
+      if (currentDepth < maxDepth) {
+        try {
+          const entries = await fs.promises.readdir(folderPath, {
+            withFileTypes: true,
+          });
+          const subdirPromises = entries
+            .filter(
+              (entry) =>
+                entry.isDirectory() &&
+                !entry.name.startsWith(".") && // Skip hidden folders
+                entry.name !== "node_modules" && // Skip node_modules
+                entry.name !== "dist" && // Skip build folders
+                entry.name !== "build"
+            )
+            .map((entry) =>
+              this.scanFolderForGit(
+                path.join(folderPath, entry.name),
+                maxDepth,
+                currentDepth + 1
+              )
+            );
+
+          const subdirResults = await Promise.all(subdirPromises);
+          subdirResults.forEach((subdirRepos) => {
+            repositories.push(...subdirRepos);
+          });
+        } catch (error) {
+          // Ignore errors reading directory (permissions, etc.)
+        }
+      }
+    } catch (error) {
+      // Ignore errors for individual folders
+    }
+
+    return repositories;
+  }
+
+  /**
+   * Check if a specific folder is a git repository
+   * @param {string} folderPath Path to check
+   * @returns {Promise<boolean>} True if folder is a git repository
+   */
+  async isGitRepository(folderPath) {
+    try {
+      // Check for .git folder
+      const gitPath = path.join(folderPath, ".git");
+      const gitStat = await fs.promises.stat(gitPath);
+
+      if (gitStat.isDirectory()) {
+        // Standard git repository
+        return true;
+      } else if (gitStat.isFile()) {
+        // Could be a git worktree (contains path to actual .git folder)
+        const gitContent = await fs.promises.readFile(gitPath, "utf8");
+        return gitContent.trim().startsWith("gitdir:");
+      }
+    } catch (error) {
+      // .git doesn't exist or not accessible
+    }
+
+    return false;
+  }
+
+  /**
+   * Get the primary repository path from workspace
+   * Uses multi-layered detection: file system scan + Git extension + git command
+   * @returns {Promise<string>} Repository path
+   * @throws {Error} If no repository found
+   */
+  async getRepositoryPathRobust() {
+    // Check cache first (with shorter timeout for faster updates)
+    const cacheKey = "primary-repo-path";
+    const cached = this.repositoryScanCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < 5000) {
+      // 5 second cache
+      if (cached.error) {
+        throw new Error(cached.error);
+      }
+      return cached.data;
+    }
+
+    let repositoryPath = null;
+    let lastError = null;
+
+    try {
+      // Method 1: Scan file system directly (most reliable and fast)
+      const repositories = await this.scanForRepositories(2); // Limit depth for speed
+      if (repositories.length > 0) {
+        repositoryPath = repositories[0]; // Use first found repository
+
+        // Cache successful result
+        this.repositoryScanCache.set(cacheKey, {
+          data: repositoryPath,
+          timestamp: Date.now(),
+          error: null,
+        });
+
+        return repositoryPath;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+
+    // Method 2: Try Git extension (if file system scan failed)
+    try {
+      if (await this.isGitInstalled()) {
+        // Wait briefly for Git extension, but don't block too long
+        const gitReady = await this.waitForGitReady(5); // Reduced attempts for speed
+
+        if (gitReady) {
+          const gitExtension = this.getGitExtension();
+          if (gitExtension) {
+            const api = gitExtension.getAPI(1);
+            if (api && api.repositories && api.repositories.length > 0) {
+              repositoryPath = api.repositories[0].rootUri.fsPath;
+
+              // Cache successful result
+              this.repositoryScanCache.set(cacheKey, {
+                data: repositoryPath,
+                timestamp: Date.now(),
+                error: null,
+              });
+
+              return repositoryPath;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      lastError = error;
+    }
+
+    // Method 3: Try git command directly on workspace folder
+    try {
+      const workspaceFolders = vscode.workspace.workspaceFolders;
+      if (workspaceFolders && workspaceFolders.length > 0) {
+        const workspacePath = workspaceFolders[0].uri.fsPath;
+        await this.executeGitCommand("git rev-parse --git-dir", workspacePath);
+
+        // If git command succeeds, this is a repository
+        repositoryPath = workspacePath;
+
+        // Cache successful result
+        this.repositoryScanCache.set(cacheKey, {
+          data: repositoryPath,
+          timestamp: Date.now(),
+          error: null,
+        });
+
+        return repositoryPath;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+
+    // No repository found - cache the error to avoid repeated scanning
+    const errorMessage = lastError
+      ? lastError.message
+      : constants.ERRORS.NO_REPOSITORIES;
+    this.repositoryScanCache.set(cacheKey, {
+      data: null,
+      timestamp: Date.now(),
+      error: errorMessage,
+    });
+
+    throw new Error(errorMessage);
+  }
+
+  /**
+   * Enhanced repository detection with robust scanning
+   * @returns {Promise<boolean>} True if repository exists
+   */
+  async hasRepositoryRobust() {
+    try {
+      // First, check if git is actually installed on the system
+      const gitInstalled = await this.isGitInstalled();
+
+      if (!gitInstalled) {
+        console.log("TimeLad: Git is not installed on this system");
+        return false;
+      }
+
+      // Use the robust repository path detection
+      await this.getRepositoryPathRobust();
+      return true;
+    } catch (error) {
+      console.log(`TimeLad: No repository found - ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
    * Get repository path safely
    * @returns {Promise<string>} Repository path
    * @throws {Error} If Git extension or repository not found
@@ -106,26 +346,8 @@ class GitService {
       throw new Error(constants.ERRORS.GIT_NOT_INSTALLED);
     }
 
-    // Wait for Git extension to be ready
-    const gitReady = await this.waitForGitReady();
-
-    if (!gitReady) {
-      throw new Error(constants.ERRORS.GIT_EXTENSION_NOT_READY);
-    }
-
-    const gitExtension = this.getGitExtension();
-
-    if (!gitExtension) {
-      throw new Error(constants.ERRORS.GIT_EXTENSION_NOT_FOUND);
-    }
-
-    const api = gitExtension.getAPI(1);
-
-    if (!api.repositories || api.repositories.length === 0) {
-      throw new Error(constants.ERRORS.NO_REPOSITORIES);
-    }
-
-    return api.repositories[0].rootUri.fsPath;
+    // Use the robust repository path detection
+    return await this.getRepositoryPathRobust();
   }
 
   /**
@@ -345,17 +567,20 @@ class GitService {
       if (commit.hash === currentHeadHash) {
         await this.createEmptyRestoreCommit(commit, repoPath);
       } else {
-        // Restore files from the target commit
-        const checkoutCommand = constants.GIT_COMMANDS.CHECKOUT_FILES.replace(
-          "%s",
-          commit.hash
-        );
-        await this.executeGitCommand(checkoutCommand, repoPath);
+        // Use git read-tree + checkout-index for reliable file restoration
+        // This approach ensures all files from the target commit are properly restored
+        // without temporarily moving HEAD
 
-        // Stage all changes
+        // Step 1: Read the target commit's tree into the index
+        await this.executeGitCommand(`git read-tree ${commit.hash}`, repoPath);
+
+        // Step 2: Update working directory to match the index
+        await this.executeGitCommand("git checkout-index -a -f", repoPath);
+
+        // Step 3: Stage all changes (the difference between current and restored state)
         await this.executeGitCommand(constants.GIT_COMMANDS.ADD_ALL, repoPath);
 
-        // Check if there are actually changes to commit
+        // Step 4: Check if there are actually changes to commit
         const { stdout: stagedChanges } = await this.executeGitCommand(
           constants.GIT_COMMANDS.DIFF_CACHED,
           repoPath
@@ -754,34 +979,12 @@ Please provide a clear, conventional commit message (50 chars or less for the su
 
   /**
    * Check if a repository exists in the current workspace
+   * Uses enhanced detection with file system scanning
    * @returns {Promise<boolean>} True if repository exists
    */
   async hasRepository() {
-    try {
-      // First, check if git is actually installed on the system
-      const gitInstalled = await this.isGitInstalled();
-
-      if (!gitInstalled) {
-        console.log("TimeLad: Git is not installed on this system");
-        return false;
-      }
-
-      // Then, wait for Git extension to be ready
-      const gitReady = await this.waitForGitReady();
-
-      if (!gitReady) {
-        console.log(
-          "TimeLad: Git extension not ready - treating as no repository"
-        );
-        return false;
-      }
-
-      // Now check if repository exists
-      await this.getRepositoryPath();
-      return true;
-    } catch (error) {
-      return false;
-    }
+    // Use the enhanced detection method
+    return await this.hasRepositoryRobust();
   }
 
   /**
@@ -970,6 +1173,7 @@ What would you like to do?`;
    */
   clearCache() {
     this.cache.clear();
+    this.repositoryScanCache.clear(); // Clear repository scan cache too
   }
 }
 

@@ -29,6 +29,11 @@ function activate(context) {
     gitHistoryProvider
   );
 
+  // Create a disposable for the provider's internal resources
+  const providerDisposable = {
+    dispose: () => gitHistoryProvider.dispose(),
+  };
+
   // Register all commands
   const commandDisposables = [
     // Refresh command for the TimeLad view
@@ -58,11 +63,6 @@ function activate(context) {
       (commit, repoPath) => gitCommands.restoreVersion(commit, repoPath)
     ),
 
-    // Toggle Expert Mode command
-    vscode.commands.registerCommand(constants.COMMANDS.TOGGLE_EXPERT_MODE, () =>
-      gitCommands.toggleExpertMode()
-    ),
-
     // Save Changes command
     vscode.commands.registerCommand(constants.COMMANDS.SAVE_CHANGES, () =>
       gitCommands.saveChanges()
@@ -86,7 +86,11 @@ function activate(context) {
   ];
 
   // Add all disposables to context
-  context.subscriptions.push(webviewProviderDisposable, ...commandDisposables);
+  context.subscriptions.push(
+    webviewProviderDisposable,
+    providerDisposable,
+    ...commandDisposables
+  );
 
   console.log(
     `${constants.EXTENSION_NAME}: All commands and providers registered successfully`
