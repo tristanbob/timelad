@@ -85,8 +85,6 @@ class GitCommands {
       throw new Error("Commit not found");
     }
 
-    vscode.window.showInformationMessage(constants.MESSAGES.RESTORING_VERSION);
-
     try {
       await this.gitService.restoreVersion(commit);
       // Close the panel after restore
@@ -121,13 +119,7 @@ class GitCommands {
    */
   async saveChanges() {
     try {
-      vscode.window.showInformationMessage(constants.MESSAGES.SAVING_CHANGES);
-
       const commitMessage = await this.gitService.saveChanges();
-
-      vscode.window.showInformationMessage(
-        `${constants.MESSAGES.CHANGES_SAVED}\nCommit: "${commitMessage}"`
-      );
     } catch (error) {
       if (error.message === constants.MESSAGES.NO_UNCOMMITTED_CHANGES) {
         vscode.window.showInformationMessage(error.message);

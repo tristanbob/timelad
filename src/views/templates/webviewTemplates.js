@@ -686,7 +686,7 @@ function generateCommitListItem(commit, index) {
               index > 0
                 ? `
                 <button class="restore-btn" onclick="restoreCommit('${commit.hash}')">
-                    ⏮️ Restore Version
+                    ⏮️ Restore
                 </button>
             `
                 : ""
@@ -736,7 +736,7 @@ function getSidebarTemplate(commits, uncommittedChanges = null) {
         <div class="header">
             <div>
                 <h1>📊 TimeLad</h1>
-                <p class="commit-count">${commits.length} recent commits</p>
+                <p class="commit-count">${commits.length} versions</p>
             </div>
             <div class="header-buttons">
                 <!-- Refresh functionality now handled by VS Code's native refresh button -->
