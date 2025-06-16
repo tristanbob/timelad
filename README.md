@@ -1,28 +1,42 @@
-# TimeLad
+# TimeLad (v0.1.1 - Pre-Release)
 
-> **⚠️ ALPHA RELEASE WARNING ⚠️**
+> **⚠️ PRE-RELEASE WARNING ⚠️**
 >
-> **This is an alpha version intended for testing purposes only.**
+> **This is a pre-release version (v0.1.1) intended for testing purposes only.**
 >
 > - **Data Loss Risk**: This software may cause data loss or repository corruption
 > - **Testing Only**: Do not use with important or production data
 > - **Backup Required**: Always backup your repositories before testing
 > - **Experimental Features**: All features are experimental and may not work as expected
-> - **No Support**: This alpha version comes with no guarantees or support
+> - **No Support**: This pre-release version comes with no guarantees or support
 >
 > **Only use this extension with disposable test data that you can afford to lose.**
 
-A minimal VS Code extension for working with Git.
+A powerful VS Code extension that makes Git version control more accessible and intuitive, with a focus on safety and ease of use.
 
 ## Features
 
-TimeLad provides enhanced commands for interacting with Git repositories:
+TimeLad provides an enhanced Git experience with these key features:
 
-- **Show Git Info**: Display information about the current branch and latest commit
-- **Show Git History**: Open a beautiful interactive UI showing the Git history with version restoration
-- **List Recent Commits**: Display a filterable list of recent commits
-- **Restore Version**: Safely restore any previous version by creating a new commit (no data loss)
-- **Set Up Version Tracking**: Automatically create a new Git repository when none exists, with friendly guidance
+### Core Features
+
+- **Interactive Git History**: Beautiful timeline view of your commit history with visual diffs
+- **Safe Version Restoration**: Travel back to any previous version without losing history
+- **Uncommitted Changes Detection**: See all your uncommitted changes at a glance
+- **AI-Generated Commit Messages**: Intelligent commit message suggestions powered by AI
+
+### Easy Git Management
+
+- **One-Click Saves**: Save your changes with a single click and smart commit messages
+- **Beginner-Friendly Setup**: Guided Git repository initialization with helpful explanations
+- **Visual File Status**: Color-coded indicators for modified, added, and deleted files
+- **Version Numbering**: Clear version labels with easy access to Git hashes
+
+### Safety First
+
+- **No Data Loss**: Always creates new commits instead of rewriting history
+- **Change Awareness**: Clearly shows what will be committed before saving
+- **Automatic Backups**: Optional automatic stashing of uncommitted changes
 
 ## Usage
 
@@ -61,7 +75,18 @@ This extension contributes the following settings:
 
 ### Version Information
 
-When you hover over any version number (like "v1", "v2", etc.) in the TimeLad interface, you'll see a tooltip showing the full Git hash for that commit. Click on any version number to copy the Git hash to your clipboard for easy reference.
+- **Hover for Details**: Hover over any version number (like "v1", "v2") to see the full Git hash
+- **One-Click Copy**: Click on any version number to copy the Git hash to your clipboard
+- **Commit Insights**: View detailed information about each commit, including author, date, and changes
+
+### AI-Powered Commits
+
+TimeLad can generate meaningful commit messages for you:
+
+- **Smart Analysis**: Examines your changes to suggest relevant commit messages
+- **VS Code AI Integration**: Uses VS Code's built-in AI when available
+- **Fallback Logic**: Provides sensible defaults even without AI capabilities
+- **Customizable**: Tweak the generated messages to better fit your needs
 
 ## Known Issues
 
@@ -71,12 +96,21 @@ Please report issues on the GitHub repository.
 
 ### 0.1.0-alpha
 
-⚠️ **ALPHA RELEASE** - Initial alpha release of TimeLad with basic Git integration.
+⚠️ **ALPHA RELEASE** - TimeLad is currently in alpha testing.
 
 **IMPORTANT**: This is an experimental alpha version:
 
-- Intended for testing purposes only
-- May cause data loss or repository corruption
-- Should not be used with important or production data
-- Always backup your repositories before testing
-- No support or guarantees provided
+- 🚧 **Testing Only**: For evaluation purposes with non-critical data
+- ⚠️ **Use Caution**: May affect your Git repository state
+- 🔄 **Backup First**: Always backup repositories before testing
+- 📝 **Feedback Welcome**: Please report issues on GitHub
+
+### What's New
+
+- Added Uncommitted Changes detection in sidebar
+- Implemented AI-Generated Commit Messages
+- New Save Changes command with one-click commit
+- Enhanced UI with visual indicators for file status
+- Improved version navigation and information display
+
+For the complete list of changes, see the [CHANGELOG](CHANGELOG.md).

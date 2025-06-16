@@ -2,24 +2,42 @@
 
 All notable changes to the "TimeLad" extension will be documented in this file.
 
-## [Unreleased]
+## [0.1.1] - 2025-06-16
+
+### Added
+
+- **Uncommitted Changes Detection**: View uncommitted changes directly in the TimeLad sidebar
+- **AI-Generated Commit Messages**: Automatic commit message generation using VS Code's built-in AI or fallback to rule-based generation
+- **Save Changes Command**: One-click saving of changes with intelligent commit messages
+- **UI Integration**: New "Unsaved Changes" section in the sidebar with file status indicators
+- **Expert Mode**: Technical details about git commands used for saving changes
 
 ### Changed
 
-- Removed expert mode toggle functionality
-- Version numbers now show git hash in tooltip when hovering
-- Clicking on version numbers copies the git hash to clipboard
-- Simplified UI by removing expert mode toggle button and detailed technical information
+- **Pre-Release Version**: Updated version to 0.1.1 with pre-release warning
+- **Dependencies**: Updated VS Code engine requirement to >=1.63.0 for pre-release support
+- **UI Improvements**:
+  - Version numbers now show git hash in tooltip when hovering
+  - Clicking on version numbers copies the git hash to clipboard
+  - Simplified UI by removing expert mode toggle button and detailed technical information
+  - Updated webview templates to include uncommitted changes section
 
 ### Removed
 
+- Expert mode toggle functionality
 - Expert mode configuration setting
 - Expert mode toggle command
 - Technical details and git command information from UI
 
+## [Unreleased]
+
+### No Changes Yet
+
+There are currently no unreleased changes.
+
 ## [0.1.0] - 2024-12-19
 
-### Added
+### Initial Release
 
 - Initial release of TimeLad
 - Show Git Info command to display current branch and latest commit information

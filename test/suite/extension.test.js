@@ -1,5 +1,6 @@
 const assert = require("assert");
 const vscode = require("vscode");
+const { describe, it, after } = require("mocha");
 
 describe("Extension Integration Tests", () => {
   // Use after hook for proper cleanup

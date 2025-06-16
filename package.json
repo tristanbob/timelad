@@ -1,9 +1,9 @@
 {
   "name": "timelad",
   "displayName": "TimeLad",
-  "description": "⚠️ ALPHA: A beginner-friendly Git time travel extension with safe version restoration and beautiful interactive history - USE ONLY FOR TESTING WITH DISPOSABLE DATA",
-  "version": "0.1.0-alpha",
-  "publisher": "tristanbob",
+  "description": "⚠️ PRE-RELEASE: A beginner-friendly Git time travel extension with safe version restoration and beautiful interactive history - USE ONLY FOR TESTING WITH DISPOSABLE DATA",
+  "version": "0.1.1",
+  "publisher": "victrisai",
   "repository": {
     "type": "git",
     "url": "https://github.com/tristanbob/timelad"
@@ -13,7 +13,7 @@
   },
   "homepage": "https://github.com/tristanbob/timelad#readme",
   "engines": {
-    "vscode": "^1.60.0"
+    "vscode": ">=1.63.0"
   },
   "categories": [
     "SCM Providers",
@@ -134,6 +134,6 @@
     "development tools",
     "scm"
   ],
-  "author": "tristanbob",
+  "author": "Victris AI",
   "license": "MIT"
 }

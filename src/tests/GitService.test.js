@@ -5,6 +5,7 @@
 
 const assert = require("assert");
 const sinon = require("sinon");
+const { describe, it, beforeEach, afterEach } = require("mocha");
 const TestUtils = require("./testUtils");
 
 // Mock the vscode module

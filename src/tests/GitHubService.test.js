@@ -1,14 +1,10 @@
 /**
  * Unit tests for GitHubService
- * 
- * Mocha globals:
- * - describe, it, beforeEach, afterEach
  */
-
-/* global describe, it, beforeEach, afterEach */
 
 const assert = require("assert");
 const sinon = require("sinon");
+const { describe, it, beforeEach, afterEach } = require("mocha");
 const TestUtils = require("./testUtils");
 
 // Simple mock for vscode
