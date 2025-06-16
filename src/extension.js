@@ -36,7 +36,7 @@ function activate(context) {
 
   // Register all commands
   const commandDisposables = [
-    // Refresh command for the TimeLad view
+    // Refresh command for the TimeLad view (used by native refresh button)
     vscode.commands.registerCommand(
       constants.COMMANDS.REFRESH_GIT_HISTORY,
       () => gitHistoryProvider.refresh()

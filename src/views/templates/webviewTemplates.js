@@ -73,23 +73,6 @@ const baseStyles = `
     color: var(--vscode-terminal-ansiGreen);
   }
   
-  .refresh-btn {
-    background: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
-    border: none;
-    border-radius: 4px;
-    padding: 6px 12px;
-    cursor: pointer;
-    font-size: 12px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-  
-  .refresh-btn:hover {
-    background: var(--vscode-button-hoverBackground);
-  }
-  
   .header-buttons {
     display: flex;
     gap: 8px;
@@ -492,9 +475,7 @@ const commitDetailsStyles = `
 const commonJavaScript = `
   const vscode = acquireVsCodeApi();
   
-  function refreshHistory() {
-    vscode.postMessage({ command: 'refresh' });
-  }
+
   
   function viewCommit(hash) {
     vscode.postMessage({ command: 'showCommit', hash: hash });
@@ -758,9 +739,7 @@ function getSidebarTemplate(commits, uncommittedChanges = null) {
                 <p class="commit-count">${commits.length} recent commits</p>
             </div>
             <div class="header-buttons">
-                <button class="refresh-btn" onclick="refreshHistory()">
-                    🔄 Refresh
-                </button>
+                <!-- Refresh functionality now handled by VS Code's native refresh button -->
             </div>
         </div>
         

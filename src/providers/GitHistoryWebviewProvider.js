@@ -121,9 +121,7 @@ class GitHistoryWebviewProvider {
       case "showCommit":
         await this.showCommitDetails(message.hash);
         break;
-      case "refresh":
-        await this.refresh();
-        break;
+
       case "restoreVersion":
         await this.restoreVersion(message.hash);
         break;
