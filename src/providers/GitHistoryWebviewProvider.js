@@ -172,12 +172,18 @@ class GitHistoryWebviewProvider {
       throw new Error("Commit not found");
     }
 
-    vscode.window.showInformationMessage(constants.MESSAGES.RESTORING_VERSION);
+    // Show loading state in the webview
+    if (this.view) {
+      this.view.webview.html = getLoadingTemplate('Restoring version...');
+    }
+    
+    const statusBar = vscode.window.setStatusBarMessage(constants.MESSAGES.RESTORING_VERSION);
 
     try {
       await this.gitService.restoreVersion(commit);
       // Refresh the view after restore
       await this.refresh();
+      statusBar.dispose();
     } catch (error) {
       throw new Error(`Failed to restore version: ${error.message}`);
     }

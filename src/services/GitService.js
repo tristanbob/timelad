@@ -3,9 +3,11 @@ const path = require('path');
 const { exec } = require('child_process');
 const util = require('util');
 const vscode = require("vscode");
-const constants = require("../constants");
-
 const { promisify } = util;
+const fsUnlink = promisify(fs.unlink);
+const fsExists = promisify(fs.exists);
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+const constants = require("../constants");
 const execPromise = promisify(exec);
 
 /**
@@ -558,6 +560,10 @@ class GitService {
    * @returns {Promise<string>} The new commit hash
    */
   async createRestoreCommit(commitHash, repoPath) {
+    if (!commitHash) {
+      throw new Error('No commit hash provided for restore');
+    }
+
     // Get the current branch name and commit
     const currentBranch = await this.getCurrentBranchName(repoPath);
     const originalCommit = (await this.executeGitCommand('git rev-parse HEAD', repoPath)).stdout.trim();
@@ -568,57 +574,79 @@ class GitService {
       
       // 2. Create a temporary index file
       const tempIndex = path.join(repoPath, '.git', `index-${Date.now()}`);
-      const env = { 
-        ...process.env,
-        GIT_INDEX_FILE: tempIndex,
-        GIT_AUTHOR_NAME: 'TimeLad',
-        GIT_AUTHOR_EMAIL: 'timelad@example.com',
-        GIT_COMMITTER_NAME: 'TimeLad',
-        GIT_COMMITTER_EMAIL: 'timelad@example.com',
-        GIT_EDITOR: 'true' // Prevent editor from opening
-      };
       
       try {
-        // 3. Reset to the target commit in the temporary index
-        await this.executeGitCommand(`git read-tree ${commitHash}`, repoPath, { env });
+        // 3. Set up environment for git operations
+        const env = { 
+          ...process.env,
+          GIT_INDEX_FILE: tempIndex,
+          GIT_AUTHOR_NAME: 'TimeLad',
+          GIT_AUTHOR_EMAIL: 'timelad@example.com',
+          GIT_COMMITTER_NAME: 'TimeLad',
+          GIT_COMMITTER_EMAIL: 'timelad@example.com',
+          GIT_EDITOR: 'true' // Prevent editor from opening
+        };
+
+        // 4. Reset to the target commit in the temporary index
+        await this.executeGitCommand(`git read-tree ${commitHash}`, repoPath, 3, 200, env);
         
-        // 4. Write the tree from the temporary index
-        const { stdout: newTree } = await this.executeGitCommand('git write-tree', repoPath, { env });
+        // 5. Write the tree from the temporary index
+        const { stdout: newTree } = await this.executeGitCommand('git write-tree', repoPath, 3, 200, env);
         
-        // 5. Create a commit message
+        // 6. Create a commit message
         // Get the version number by counting commits from the beginning
         const { stdout: version } = await this.executeGitCommand(
           `git rev-list --count ${commitHash}`, 
           repoPath
         );
+        
         const commitMessage = `Restored version ${version.trim()}\n\n` +
                             `This commit restores the repository to a previous state.\n` +
                             `Original commit: ${originalCommit}\n` +
                             `Restore time: ${new Date().toISOString()}`;
         
         // 6. Create the commit using git commit-tree
-        const { stdout: newCommit } = await this.executeGitCommand(
-          `git commit-tree ${newTree.trim()} -p ${originalCommit} -m "${commitMessage.replace(/"/g, '\\"')}"`,
-          repoPath,
-          { env }
-        );
-        
-        const newCommitHash = newCommit.trim();
-        
-        if (!newCommitHash) {
-          throw new Error('Failed to create new commit');
+        // First, write the commit message to a temporary file to avoid shell escaping issues
+        const tempMsgFile = path.join(repoPath, '.git', `COMMIT_EDITMSG-${Date.now()}`);
+        try {
+          await fs.promises.writeFile(tempMsgFile, commitMessage);
+          
+          // Use the temporary file for the commit message
+          const { stdout: newCommit } = await this.executeGitCommand(
+            `git commit-tree ${newTree.trim()} -p ${originalCommit} -F "${tempMsgFile}"`,
+            repoPath,
+            3, // maxRetries
+            200, // retryDelay
+            env // environment variables
+          );
+          
+          const newCommitHash = newCommit.trim();
+          
+          if (!newCommitHash) {
+            throw new Error('Failed to create new commit: No commit hash returned');
+          }
+          
+          // 7. Update the current branch to point to the new commit
+          await this.executeGitCommand(
+            `git update-ref refs/heads/${currentBranch} ${newCommitHash}`,
+            repoPath
+          );
+          
+          // 8. Reset the working directory to match the new commit
+          await this.executeGitCommand('git reset --hard', repoPath);
+          
+          return newCommitHash;
+          
+        } finally {
+          // Clean up the temporary message file
+          try {
+            if (fs.existsSync(tempMsgFile)) {
+              fs.unlinkSync(tempMsgFile);
+            }
+          } catch (e) {
+            console.warn('Failed to clean up temporary message file:', e);
+          }
         }
-        
-        // 7. Update the current branch to point to the new commit
-        await this.executeGitCommand(
-          `git update-ref refs/heads/${currentBranch} ${newCommitHash}`,
-          repoPath
-        );
-        
-        // 8. Reset the working directory to match the new commit
-        await this.executeGitCommand('git reset --hard', repoPath);
-        
-        return newCommitHash;
         
       } catch (error) {
         console.error('Error during restore commit:', error);
@@ -658,6 +686,9 @@ class GitService {
     if (!repoPath) {
       repoPath = await this.getRepositoryPath();
     }
+    
+    // Ensure we have a clean working directory by removing any stale lock files
+    await this.removeGitLockFile(repoPath);
 
     // Get current branch and commit before any changes
     const currentBranch = await this.getCurrentBranchName(repoPath);
@@ -694,8 +725,16 @@ class GitService {
       }
 
       // 2. Clean the working directory completely before restore
-      await this.executeGitCommand('git reset --hard', repoPath);
-      await this.executeGitCommand('git clean -fdx', repoPath);
+      // Add retry logic for these operations as they might fail due to lock files
+      try {
+        await this.executeGitCommand('git reset --hard', repoPath, 3, 200);
+        await this.executeGitCommand('git clean -fdx', repoPath, 3, 200);
+      } catch (error) {
+        // If we still have issues after retries, try one more time after removing lock files
+        await this.removeGitLockFile(repoPath);
+        await this.executeGitCommand('git reset --hard', repoPath, 1, 500);
+        await this.executeGitCommand('git clean -fdx', repoPath, 1, 500);
+      }
       
       // 3. Create a restore commit that brings in the target state
       const newCommitHash = await this.createRestoreCommit(commit.hash, repoPath);
@@ -909,6 +948,78 @@ class GitService {
       console.log("Failed to use VSCode AI:", error);
       return null;
     }
+  }
+
+  /**
+   * Safely remove Git index.lock file if it exists
+   * @param {string} repoPath Path to the repository
+   * @returns {Promise<boolean>} True if lock file was removed, false otherwise
+   */
+  async removeGitLockFile(repoPath) {
+    const lockFilePath = path.join(repoPath, '.git', 'index.lock');
+    try {
+      if (await fsExists(lockFilePath)) {
+        await fsUnlink(lockFilePath);
+        console.log(`Removed Git lock file: ${lockFilePath}`);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.warn(`Failed to remove Git lock file: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Execute a Git command with retry logic for lock-related failures
+   * @param {string} command Git command to execute
+   * @param {string} repoPath Repository path
+   * @param {number} [maxRetries=2] Maximum number of retry attempts
+   * @param {number} [retryDelay=100] Delay between retries in ms
+   * @param {Object} [envVars={}] Additional environment variables to pass to the command
+   * @returns {Promise<{stdout: string, stderr: string}>} Command result
+   */
+  async executeGitCommand(command, repoPath, maxRetries = 2, retryDelay = 100, envVars = {}) {
+    const execPromise = util.promisify(exec);
+    const options = { 
+      cwd: repoPath,
+      env: { ...process.env, ...envVars }
+    };
+    let lastError;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const { stdout, stderr } = await execPromise(command, options);
+        if (stderr && !stderr.includes('warning: ')) { // Only log non-warning stderr
+          console.warn(`Git stderr: ${stderr}`);
+        }
+        return { 
+          stdout: stdout ? stdout.trim() : '', 
+          stderr: stderr ? stderr.trim() : '' 
+        };
+      } catch (error) {
+        lastError = error;
+        
+        // If we get a lock-related error and have retries left
+        if (error.message && error.message.includes('index.lock') && attempt < maxRetries) {
+          console.warn(`Git lock conflict (attempt ${attempt + 1}/${maxRetries}), retrying...`);
+          await this.removeGitLockFile(repoPath);
+          await delay(retryDelay * (attempt + 1)); // Exponential backoff
+          continue;
+        }
+        
+        // For other errors or no retries left, break the loop
+        break;
+      }
+    }
+    
+    // If we get here, all retries failed
+    const errorMessage = lastError ? 
+      `Error executing git command after ${maxRetries + 1} attempts: ${command}\n${lastError.message || lastError}` :
+      `Unknown error executing git command: ${command}`;
+      
+    console.error(errorMessage);
+    throw new Error(errorMessage);
   }
 
   /**
