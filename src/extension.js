@@ -42,47 +42,26 @@ function activate(context) {
       () => gitHistoryProvider.refresh()
     ),
 
-    // Show Git Info command
-    vscode.commands.registerCommand(constants.COMMANDS.SHOW_GIT_INFO, () =>
-      gitCommands.showGitInfo()
+    // Internal commands (not exposed in command palette)
+    vscode.commands.registerCommand(constants.COMMANDS.SAVE_TO_GITHUB, () =>
+      gitCommands.saveToGitHub()
+    ),
+    vscode.commands.registerCommand(constants.COMMANDS.LOAD_FROM_GITHUB, () =>
+      gitCommands.loadFromGitHub()
     ),
 
-    // Show TimeLad History command (full panel)
-    vscode.commands.registerCommand(constants.COMMANDS.SHOW_GIT_HISTORY, () =>
-      gitCommands.showGitHistory()
-    ),
-
-    // List Commits command (QuickPick)
-    vscode.commands.registerCommand(constants.COMMANDS.LIST_COMMITS, () =>
-      gitCommands.listCommits()
-    ),
-
-    // Restore Version command
+    // Public commands (exposed in command palette)
     vscode.commands.registerCommand(
       constants.COMMANDS.RESTORE_VERSION,
       (commit, repoPath) => gitCommands.restoreVersion(commit, repoPath)
     ),
-
-    // Save Changes command
     vscode.commands.registerCommand(constants.COMMANDS.SAVE_CHANGES, () =>
       gitCommands.saveChanges()
     ),
-
-    // Set Up Version Tracking command
     vscode.commands.registerCommand(
       constants.COMMANDS.SETUP_VERSION_TRACKING,
       () => gitCommands.setupVersionTracking()
-    ),
-
-    // Save to GitHub command
-    vscode.commands.registerCommand(constants.COMMANDS.SAVE_TO_GITHUB, () =>
-      gitCommands.saveToGitHub()
-    ),
-
-    // Load from GitHub command
-    vscode.commands.registerCommand(constants.COMMANDS.LOAD_FROM_GITHUB, () =>
-      gitCommands.loadFromGitHub()
-    ),
+    )
   ];
 
   // Add all disposables to context
@@ -95,6 +74,27 @@ function activate(context) {
   console.log(
     `${constants.EXTENSION_NAME}: All commands and providers registered successfully`
   );
+
+  // Schedule periodic backup cleanup (every 24 hours)
+  const cleanupInterval = setInterval(async () => {
+    try {
+      const gitService = gitCommands.getGitService();
+      if (gitService) {
+        const repoPath = await gitService.getRepositoryPath().catch(() => null);
+        if (repoPath) {
+          console.log('Running scheduled backup cleanup...');
+          await gitService.cleanupOldBackups(repoPath, constants.BACKUP.RETENTION_DAYS);
+        }
+      }
+    } catch (error) {
+      console.error('Error during scheduled backup cleanup:', error);
+    }
+  }, 24 * 60 * 60 * 1000); // 24 hours
+
+  // Register cleanup on deactivation
+  context.subscriptions.push({
+    dispose: () => clearInterval(cleanupInterval)
+  });
 }
 
 /**

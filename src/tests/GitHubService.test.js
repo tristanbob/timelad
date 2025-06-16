@@ -1,6 +1,11 @@
 /**
  * Unit tests for GitHubService
+ * 
+ * Mocha globals:
+ * - describe, it, beforeEach, afterEach
  */
+
+/* global describe, it, beforeEach, afterEach */
 
 const assert = require("assert");
 const sinon = require("sinon");
@@ -78,11 +83,7 @@ describe("GitHubService", () => {
     });
   });
 
-  describe("getCurrentBranch", () => {
-    it("should be a function", () => {
-      assert.strictEqual(typeof gitHubService.getCurrentBranch, "function");
-    });
-  });
+  // getCurrentBranch method has been removed as it's not used in the codebase
 
   describe("getUserRepositories", () => {
     it("should be a function", () => {

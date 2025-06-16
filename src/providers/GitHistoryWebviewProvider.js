@@ -63,7 +63,7 @@ class GitHistoryWebviewProvider {
   async proactivelyScanForRepositories() {
     try {
       // Do a quick scan to warm up the cache
-      return await this.gitService.hasRepository();
+      return await this.gitService.hasRepositoryRobust();
     } catch (error) {
       console.log(`TimeLad: Proactive scan failed: ${error.message}`);
       return false;
@@ -287,7 +287,7 @@ class GitHistoryWebviewProvider {
       }
 
       // Check if repository exists using enhanced scanning
-      const hasRepo = await this.gitService.hasRepository();
+      const hasRepo = await this.gitService.hasRepositoryRobust();
 
       if (!hasRepo) {
         // Show the repository setup UI

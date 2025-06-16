@@ -1,6 +1,11 @@
 /**
  * Unit tests for GitCommands
+ * 
+ * Mocha globals:
+ * - describe, it, beforeEach, afterEach
  */
+
+/* global describe, it, beforeEach, afterEach */
 
 const assert = require("assert");
 const sinon = require("sinon");
@@ -85,84 +90,6 @@ describe("GitCommands", () => {
     it("should initialize with GitService and GitHubService", () => {
       assert.ok(gitCommands.gitService);
       assert.ok(gitCommands.githubService);
-    });
-  });
-
-  describe("showGitInfo", () => {
-    it("should be a function", () => {
-      assert.strictEqual(typeof gitCommands.showGitInfo, "function");
-    });
-
-    it("should handle git service success", async () => {
-      // Stub the gitService method to return mock data
-      sinon.stub(gitCommands.gitService, "getCurrentBranchInfo").resolves({
-        branch: "main",
-        version: "1.0.0",
-      });
-
-      await gitCommands.showGitInfo();
-
-      // Should show information message
-      assert.ok(mockVscode.window.showInformationMessage.called);
-    });
-
-    it("should handle git service error", async () => {
-      // Stub the gitService method to throw an error
-      sinon
-        .stub(gitCommands.gitService, "getCurrentBranchInfo")
-        .rejects(new Error("Test error"));
-
-      await gitCommands.showGitInfo();
-
-      // Should show an error message
-      assert.ok(mockVscode.window.showErrorMessage.called);
-    });
-  });
-
-  describe("showGitHistory", () => {
-    it("should be a function", () => {
-      assert.strictEqual(typeof gitCommands.showGitHistory, "function");
-    });
-
-    it("should create webview panel", async () => {
-      const mockPanel = {
-        webview: {
-          html: "",
-          options: {},
-          onDidReceiveMessage: sinon.stub(),
-        },
-        dispose: sinon.stub(),
-        onDidDispose: sinon.stub(),
-      };
-
-      mockVscode.window.createWebviewPanel.returns(mockPanel);
-      sinon.stub(gitCommands.gitService, "getCommits").resolves([]);
-
-      await gitCommands.showGitHistory();
-
-      assert.ok(mockVscode.window.createWebviewPanel.called);
-    });
-  });
-
-  describe("listCommits", () => {
-    it("should be a function", () => {
-      assert.strictEqual(typeof gitCommands.listCommits, "function");
-    });
-
-    it("should create quick pick for commits", async () => {
-      sinon.stub(gitCommands.gitService, "getSimpleCommits").resolves([
-        {
-          subject: "Test commit",
-          version: "1.0.0",
-          author: "Test User",
-          date: "2023-01-01",
-          hash: "abc123",
-        },
-      ]);
-
-      await gitCommands.listCommits();
-
-      assert.ok(mockVscode.window.createQuickPick.called);
     });
   });
 

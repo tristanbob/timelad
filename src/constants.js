@@ -21,14 +21,13 @@ module.exports = {
 
   // Command identifiers
   COMMANDS: {
-    SHOW_GIT_INFO: "timelad.showGitInfo",
-    SHOW_GIT_HISTORY: "timelad.showGitHistory",
-    LIST_COMMITS: "timelad.listCommits",
+    // Core commands - exposed in command palette
     REFRESH_GIT_HISTORY: "timelad.refreshGitHistory",
     RESTORE_VERSION: "timelad.restoreVersion",
-
     SAVE_CHANGES: "timelad.saveChanges",
     SETUP_VERSION_TRACKING: "timelad.setupVersionTracking",
+    
+    // Internal commands - used programmatically but not in command palette
     SAVE_TO_GITHUB: "timelad.saveToGitHub",
     LOAD_FROM_GITHUB: "timelad.loadFromGitHub",
   },
@@ -80,6 +79,17 @@ module.exports = {
     GITHUB_REPO_CREATED: "GitHub repository created successfully!",
     LOADING_FROM_GITHUB: "Loading from GitHub...",
     GITHUB_LOAD_SUCCESS: "Successfully loaded from GitHub!",
+    BACKUP_CREATED: "Backup created successfully.",
+    BACKUP_RESTORED: "Successfully restored from backup.",
+    CLEANING_BACKUPS: "Cleaning up old backups...",
+    BACKUPS_CLEANED: "Old backups cleaned up successfully.",
+  },
+
+  // Backup settings
+  BACKUP: {
+    BRANCH_PREFIX: 'timelad/backup/',
+    RETENTION_DAYS: 7,
+    MAX_BACKUPS: 10,
   },
 
   // Error messages
@@ -94,6 +104,8 @@ module.exports = {
       "No Git repositories found in the current workspace. Please open a Git repository.",
     FETCH_COMMITS_FAILED: "Failed to fetch commits",
     RESTORE_VERSION_FAILED: "Failed to restore version",
+    BACKUP_CREATION_FAILED: "Failed to create backup",
+    BACKUP_RESTORE_FAILED: "Failed to restore from backup",
     SHOW_COMMIT_DETAILS_FAILED: "Error showing commit details",
     NO_WORKSPACE_FOLDER: "Please open a folder in VS Code first.",
     REPO_CREATION_FAILED: "Could not set up version tracking",

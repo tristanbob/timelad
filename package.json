@@ -38,18 +38,6 @@
   "contributes": {
     "commands": [
       {
-        "command": "timelad.showGitInfo",
-        "title": "TimeLad: Show Git Info"
-      },
-      {
-        "command": "timelad.showGitHistory",
-        "title": "TimeLad: Show Git History"
-      },
-      {
-        "command": "timelad.listCommits",
-        "title": "TimeLad: List Recent Commits"
-      },
-      {
         "command": "timelad.refreshGitHistory",
         "title": "Refresh",
         "icon": "$(refresh)"
@@ -65,14 +53,6 @@
       {
         "command": "timelad.setupVersionTracking",
         "title": "TimeLad: Set Up Version Tracking"
-      },
-      {
-        "command": "timelad.saveToGitHub",
-        "title": "TimeLad: Save to GitHub"
-      },
-      {
-        "command": "timelad.loadFromGitHub",
-        "title": "TimeLad: Load from GitHub"
       }
     ],
     "menus": {
@@ -98,7 +78,9 @@
         {
           "id": "timelad-git-history",
           "name": "TimeLad",
-          "type": "webview"
+          "type": "webview",
+          "contextualTitle": "TimeLad",
+          "icon": "$(history)"
         }
       ]
     },

@@ -19,69 +19,11 @@ class GitCommands {
   }
 
   /**
-   * Show Git info command
+   * Get the GitService instance
+   * @returns {GitService} The GitService instance
    */
-  async showGitInfo() {
-    try {
-      const { branch, version } = await this.gitService.getCurrentBranchInfo();
-
-      if (!branch) {
-        vscode.window.showInformationMessage(constants.MESSAGES.NOT_ON_BRANCH);
-        return;
-      }
-
-      vscode.window.showInformationMessage(
-        `Current Branch: ${branch}\nCurrent Version: Version ${version}`
-      );
-    } catch (error) {
-      vscode.window.showErrorMessage(
-        `${constants.EXTENSION_NAME}: ${error.message}`
-      );
-    }
-  }
-
-  /**
-   * Show TimeLad history in a full panel
-   */
-  async showGitHistory() {
-    try {
-      const commits = await this.gitService.getCommits(
-        constants.MAX_COMMITS_PANEL
-      );
-
-      // Create a WebView to display the commit history
-      const panel = vscode.window.createWebviewPanel(
-        constants.GIT_HISTORY_VIEW_ID,
-        `${constants.EXTENSION_NAME}: History`,
-        vscode.ViewColumn.One,
-        {
-          enableScripts: true,
-          retainContextWhenHidden: true,
-        }
-      );
-
-      // Set the HTML content
-      panel.webview.html = getCommitHistoryTemplate(commits);
-
-      // Handle messages from the webview
-      panel.webview.onDidReceiveMessage(async (message) => {
-        try {
-          await this.handlePanelWebviewMessage(message, commits, panel);
-        } catch (error) {
-          console.error(
-            `${constants.EXTENSION_NAME}: Error handling panel webview message:`,
-            error
-          );
-          vscode.window.showErrorMessage(
-            `${constants.EXTENSION_NAME}: ${error.message}`
-          );
-        }
-      });
-    } catch (error) {
-      vscode.window.showErrorMessage(
-        `${constants.EXTENSION_NAME}: ${error.message}`
-      );
-    }
+  getGitService() {
+    return this.gitService;
   }
 
   /**
@@ -151,64 +93,6 @@ class GitCommands {
       panel.dispose();
     } catch (error) {
       throw new Error(`Failed to restore version: ${error.message}`);
-    }
-  }
-
-  /**
-   * List commits in QuickPick
-   */
-  async listCommits() {
-    try {
-      const commits = await this.gitService.getSimpleCommits();
-
-      // Create a QuickPick to show the commits
-      const quickPick = vscode.window.createQuickPick();
-      quickPick.title = "Recent Commits";
-      quickPick.placeholder = "Select a commit to view details";
-      quickPick.items = commits.map((commit) => ({
-        label: commit.subject,
-        description: `Version ${commit.version} - ${commit.author}`,
-        detail: `${commit.date}`,
-        commit: commit,
-      }));
-
-      quickPick.onDidAccept(async () => {
-        const selectedItem = quickPick.selectedItems[0];
-        if (selectedItem && selectedItem.commit) {
-          const commit = selectedItem.commit;
-          try {
-            const commitDetails = await this.gitService.getCommitDetails(
-              commit.hash
-            );
-
-            const panel = vscode.window.createWebviewPanel(
-              constants.COMMIT_DETAILS_VIEW_ID,
-              `${constants.EXTENSION_NAME}: Version ${commit.version}`,
-              vscode.ViewColumn.One,
-              {
-                enableScripts: false,
-                retainContextWhenHidden: true,
-              }
-            );
-
-            panel.webview.html = getCommitDetailsTemplate(
-              commit,
-              commitDetails
-            );
-          } catch (error) {
-            vscode.window.showErrorMessage(
-              `${constants.EXTENSION_NAME}: ${error.message}`
-            );
-          }
-        }
-        quickPick.hide();
-      });
-
-      quickPick.show();
-    } catch (error) {
-      vscode.window.showErrorMessage(
-        `${constants.EXTENSION_NAME}: ${error.message}`
-      );
     }
   }
 

@@ -1,11 +1,12 @@
+const fs = require('fs');
+const path = require('path');
+const { exec } = require('child_process');
+const util = require('util');
 const vscode = require("vscode");
-const { exec } = require("child_process");
-const util = require("util");
-const fs = require("fs");
-const path = require("path");
 const constants = require("../constants");
 
-const execPromise = util.promisify(exec);
+const { promisify } = util;
+const execPromise = promisify(exec);
 
 /**
  * Service class for Git operations
@@ -14,6 +15,7 @@ class GitService {
   constructor() {
     this.cache = new Map();
     this.repositoryScanCache = new Map(); // Cache for repository scanning results
+    this.lastHealthCheck = new Map(); // Track last health check time per repo
   }
 
   /**
@@ -68,31 +70,6 @@ class GitService {
     return false;
   }
 
-  /**
-   * Check if Git system is ready and has repositories
-   * @returns {Promise<boolean>} True if git is ready and has repositories
-   */
-  async isGitSystemReady() {
-    try {
-      const gitExtension = this.getGitExtension();
-
-      if (!gitExtension) {
-        return false;
-      }
-
-      const api = gitExtension.getAPI(1);
-
-      if (!api) {
-        return false;
-      }
-
-      // Check if repositories array is available (even if empty)
-      // This indicates git extension is fully initialized
-      return Array.isArray(api.repositories);
-    } catch (error) {
-      return false;
-    }
-  }
 
   /**
    * Scan workspace folders for git repositories (similar to VS Code Source Control)
@@ -177,32 +154,6 @@ class GitService {
     }
 
     return repositories;
-  }
-
-  /**
-   * Check if a specific folder is a git repository
-   * @param {string} folderPath Path to check
-   * @returns {Promise<boolean>} True if folder is a git repository
-   */
-  async isGitRepository(folderPath) {
-    try {
-      // Check for .git folder
-      const gitPath = path.join(folderPath, ".git");
-      const gitStat = await fs.promises.stat(gitPath);
-
-      if (gitStat.isDirectory()) {
-        // Standard git repository
-        return true;
-      } else if (gitStat.isFile()) {
-        // Could be a git worktree (contains path to actual .git folder)
-        const gitContent = await fs.promises.readFile(gitPath, "utf8");
-        return gitContent.trim().startsWith("gitdir:");
-      }
-    } catch (error) {
-      // .git doesn't exist or not accessible
-    }
-
-    return false;
   }
 
   /**
@@ -334,20 +285,12 @@ class GitService {
   }
 
   /**
-   * Get repository path safely
+   * Get repository path safely (alias for getRepositoryPathRobust)
    * @returns {Promise<string>} Repository path
-   * @throws {Error} If Git extension or repository not found
+   * @throws {Error} If Git is not installed or no repository found
    */
   async getRepositoryPath() {
-    // Check if git is installed first
-    const gitInstalled = await this.isGitInstalled();
-
-    if (!gitInstalled) {
-      throw new Error(constants.ERRORS.GIT_NOT_INSTALLED);
-    }
-
-    // Use the robust repository path detection
-    return await this.getRepositoryPathRobust();
+    return this.getRepositoryPathRobust();
   }
 
   /**
@@ -374,80 +317,39 @@ class GitService {
   }
 
   /**
-   * Get commits with version numbers
-   * @param {number} limit Maximum number of commits to fetch
-   * @param {string} repoPath Repository path
+   * Internal method to fetch commits with flexible options
+   * @private
+   * @param {Object} options Options for commit retrieval
+   * @param {number} [options.limit=30] Maximum number of commits to fetch
+   * @param {string} [options.repoPath=null] Repository path
+   * @param {boolean} [options.useCache=true] Whether to use cache
+   * @param {string} [options.logFormat=constants.GIT_COMMANDS.LOG_FORMAT] Git log format command
    * @returns {Promise<Array>} Array of commit objects
    */
-  async getCommits(limit = constants.MAX_COMMITS_SIDEBAR, repoPath = null) {
-    try {
-      if (!repoPath) {
-        repoPath = await this.getRepositoryPath();
-      }
-
-      // Check cache first
-      const cacheKey = `commits-${repoPath}-${limit}`;
-      const cached = this.cache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < constants.CACHE_TIMEOUT) {
-        return cached.data;
-      }
-
-      const totalCommits = await this.getCommitCount(repoPath);
-
-      // Get detailed commit information
-      const command = constants.GIT_COMMANDS.LOG_FORMAT.replace("%d", limit);
-      const { stdout } = await this.executeGitCommand(command, repoPath);
-
-      // Process the git log output and add version numbers
-      const commits = stdout
-        .split("\n")
-        .map((line, index) => {
-          if (!line.trim()) return null;
-          const [hash, author, date, subject] = line.split("|");
-          const versionNumber = totalCommits - index;
-          return {
-            hash: hash || "",
-            author: author || "Unknown",
-            date: date || "",
-            subject: subject || "No subject",
-            version: versionNumber,
-          };
-        })
-        .filter((commit) => commit !== null);
-
-      // Cache the results
-      this.cache.set(cacheKey, {
-        data: commits,
-        timestamp: Date.now(),
-      });
-
-      return commits;
-    } catch (error) {
-      throw new Error(
-        `${constants.ERRORS.FETCH_COMMITS_FAILED}: ${error.message}`
-      );
-    }
-  }
-
-  /**
-   * Get simple commits for QuickPick
-   * @param {string} repoPath Repository path
-   * @returns {Promise<Array>} Array of commit objects
-   */
-  async getSimpleCommits(repoPath = null) {
+  async _getCommitsInternal({
+    limit = constants.MAX_COMMITS_SIDEBAR,
+    repoPath = null,
+    useCache = true,
+    logFormat = constants.GIT_COMMANDS.LOG_FORMAT,
+  } = {}) {
     if (!repoPath) {
       repoPath = await this.getRepositoryPath();
     }
 
-    const totalCommits = await this.getCommitCount(repoPath);
+    // Check cache if enabled
+    const cacheKey = `commits-${repoPath}-${limit}-${logFormat.includes('LOG_FORMAT') ? 'detail' : 'simple'}`;
+    if (useCache) {
+      const cached = this.cache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < constants.CACHE_TIMEOUT) {
+        return cached.data;
+      }
+    }
 
-    const command = constants.GIT_COMMANDS.LOG_SIMPLE.replace(
-      "%d",
-      constants.MAX_COMMITS_QUICKPICK
-    );
+    const totalCommits = await this.getCommitCount(repoPath);
+    const command = logFormat.replace("%d", limit);
     const { stdout } = await this.executeGitCommand(command, repoPath);
 
-    return stdout
+    const commits = stdout
       .split("\n")
       .map((line, index) => {
         if (!line.trim()) return null;
@@ -462,6 +364,52 @@ class GitService {
         };
       })
       .filter((commit) => commit !== null);
+
+    // Cache the results if enabled
+    if (useCache) {
+      this.cache.set(cacheKey, {
+        data: commits,
+        timestamp: Date.now(),
+      });
+    }
+
+    return commits;
+  }
+
+  /**
+   * Get commits with version numbers
+   * @param {number} limit Maximum number of commits to fetch
+   * @param {string} repoPath Repository path
+   * @returns {Promise<Array>} Array of commit objects
+   * @throws {Error} If commit retrieval fails
+   */
+  async getCommits(limit = constants.MAX_COMMITS_SIDEBAR, repoPath = null) {
+    try {
+      return await this._getCommitsInternal({
+        limit,
+        repoPath,
+        useCache: true,
+        logFormat: constants.GIT_COMMANDS.LOG_FORMAT,
+      });
+    } catch (error) {
+      throw new Error(
+        `${constants.ERRORS.FETCH_COMMITS_FAILED}: ${error.message}`
+      );
+    }
+  }
+
+  /**
+   * Get simple commits for QuickPick
+   * @param {string} repoPath Repository path
+   * @returns {Promise<Array>} Array of commit objects
+   */
+  async getSimpleCommits(repoPath = null) {
+    return this._getCommitsInternal({
+      limit: constants.MAX_COMMITS_QUICKPICK,
+      repoPath,
+      useCache: false,
+      logFormat: constants.GIT_COMMANDS.LOG_SIMPLE,
+    });
   }
 
   /**
@@ -526,121 +474,269 @@ class GitService {
   }
 
   /**
-   * Restore a specific version by creating a new commit
-   * @param {Object} commit Commit object to restore
-   * @param {string} repoPath Repository path
-   * @throws {Error} If restore operation fails
+   * Create a backup branch before destructive operations
+   * @param {string} repoPath Path to repository
+   * @returns {Promise<string>} Name of the backup branch
    */
-  async restoreVersion(commit, repoPath = null) {
+  async createBackupBranch(repoPath) {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const branchName = `timelad/backup/pre-restore-${timestamp}`;
+    const currentBranch = await this.getCurrentBranchName(repoPath);
+    
+    // Create and switch to backup branch
+    await this.executeGitCommand(`git checkout -b ${branchName}`, repoPath);
+    
+    // Switch back to original branch
+    await this.executeGitCommand(`git checkout ${currentBranch}`, repoPath);
+    
+    return branchName;
+  }
+
+  /**
+   * Get current branch name
+   * @param {string} repoPath Path to repository
+   * @returns {Promise<string>} Current branch name
+   */
+  async getCurrentBranchName(repoPath) {
+    const { stdout } = await this.executeGitCommand('git rev-parse --abbrev-ref HEAD', repoPath);
+    return stdout.trim();
+  }
+
+  /**
+   * Clean up old backup branches
+   * @param {string} repoPath Path to repository
+   * @param {number} daysToKeep Number of days to keep backups
+   */
+  async cleanupOldBackups(repoPath, daysToKeep = 7) {
     try {
-      if (!repoPath) {
-        repoPath = await this.getRepositoryPath();
-      }
-
-      // Check if working directory is clean
-      const isClean = await this.isWorkingDirectoryClean(repoPath);
-      if (!isClean) {
-        const stashChoice = await vscode.window.showWarningMessage(
-          "You have uncommitted changes. Would you like to stash them before restoring?",
-          "Stash Changes",
-          "Cancel"
-        );
-
-        if (stashChoice === "Stash Changes") {
-          await this.stashChanges(repoPath);
-          vscode.window.showInformationMessage(
-            constants.MESSAGES.CHANGES_STASHED
-          );
-        } else {
-          return;
-        }
-      }
-
-      // Get the current HEAD commit hash to compare
-      const { stdout: currentHead } = await this.executeGitCommand(
-        constants.GIT_COMMANDS.REV_PARSE_HEAD,
+      const { stdout } = await this.executeGitCommand(
+        'git for-each-ref --format="%(refname:short) %(creatordate:iso)" refs/heads/timelad/backup/',
         repoPath
       );
-      const currentHeadHash = currentHead.trim();
 
-      // If we're trying to restore to the current commit, create an empty commit anyway
-      if (commit.hash === currentHeadHash) {
-        await this.createEmptyRestoreCommit(commit, repoPath);
-      } else {
-        // Use git read-tree + checkout-index for reliable file restoration
-        // This approach ensures all files from the target commit are properly restored
-        // without temporarily moving HEAD
+      const now = new Date();
+      const cutoff = new Date(now);
+      cutoff.setDate(cutoff.getDate() - daysToKeep);
 
-        // Step 1: Read the target commit's tree into the index
-        await this.executeGitCommand(`git read-tree ${commit.hash}`, repoPath);
+      for (const line of stdout.trim().split('\n')) {
+        if (!line) continue;
+        
+        const [branch, ...dateParts] = line.split(' ');
+        const dateStr = dateParts.join(' ');
+        const branchDate = new Date(dateStr);
 
-        // Step 2: Update working directory to match the index
-        await this.executeGitCommand("git checkout-index -a -f", repoPath);
-
-        // Step 3: Stage all changes (the difference between current and restored state)
-        await this.executeGitCommand(constants.GIT_COMMANDS.ADD_ALL, repoPath);
-
-        // Step 4: Check if there are actually changes to commit
-        const { stdout: stagedChanges } = await this.executeGitCommand(
-          constants.GIT_COMMANDS.DIFF_CACHED,
-          repoPath
-        );
-
-        if (stagedChanges.trim()) {
-          // Create commit with the restored changes
-          await this.createRestoreCommit(commit, repoPath);
-        } else {
-          // No actual changes detected, create empty commit to document the action
-          await this.createEmptyRestoreCommit(commit, repoPath);
+        if (branchDate < cutoff) {
+          try {
+            await this.executeGitCommand(`git branch -D ${branch}`, repoPath);
+          } catch (error) {
+            console.warn(`Failed to delete old backup branch ${branch}:`, error);
+          }
         }
       }
-
-      // Get the new version number
-      const newVersion = await this.getCommitCount(repoPath);
-
-      vscode.window.showInformationMessage(
-        `✅ Successfully restored to Version ${commit.version}!\nCreated new Version ${newVersion} with description "Restored version ${commit.version}".`
-      );
-
-      // Clear cache after successful restore
-      this.clearCache();
     } catch (error) {
-      throw new Error(
-        `${constants.ERRORS.RESTORE_VERSION_FAILED}: ${error.message}`
-      );
+      // Ignore errors during cleanup
+      console.warn('Error during backup cleanup:', error);
     }
   }
 
   /**
-   * Create a restore commit using a temporary file
-   * @param {Object} commit Commit object to restore
+   * Create a new branch at a specific commit
+   * @param {string} branchName Name of the new branch
+   * @param {string} commitHash Commit hash to create branch at
    * @param {string} repoPath Repository path
+   * @returns {Promise<void>}
    */
-  async createRestoreCommit(commit, repoPath) {
-    const restoreMessage = `Restored version ${commit.version}`;
+  async createBranchAtCommit(branchName, commitHash, repoPath) {
+    await this.executeGitCommand(`git branch ${branchName} ${commitHash}`, repoPath);
+  }
 
-    const tempMsgFile = path.join(repoPath, constants.TEMP_COMMIT_FILE);
-
+  /**
+   * Create a new commit that restores the working directory to a specific commit
+   * using Git's plumbing commands to avoid editor issues
+   * @param {string} commitHash Commit hash to restore
+   * @param {string} repoPath Repository path
+   * @returns {Promise<string>} The new commit hash
+   */
+  async createRestoreCommit(commitHash, repoPath) {
+    // Get the current branch name and commit
+    const currentBranch = await this.getCurrentBranchName(repoPath);
+    const originalCommit = (await this.executeGitCommand('git rev-parse HEAD', repoPath)).stdout.trim();
+    
     try {
-      // Write commit message to temporary file
-      fs.writeFileSync(tempMsgFile, restoreMessage, "utf8");
-
-      // Commit using the file - convert Windows backslashes to forward slashes for git
-      const gitCompatiblePath = tempMsgFile.replace(/\\/g, "/");
-      const commitCommand = constants.GIT_COMMANDS.COMMIT_FILE.replace(
-        "%s",
-        gitCompatiblePath
-      );
-      await this.executeGitCommand(commitCommand, repoPath);
-
-      // Clean up temporary file
-      fs.unlinkSync(tempMsgFile);
+      // 1. Get the current tree and parent commit
+      const { stdout: currentTree } = await this.executeGitCommand('git write-tree', repoPath);
+      
+      // 2. Create a temporary index file
+      const tempIndex = path.join(repoPath, '.git', `index-${Date.now()}`);
+      const env = { 
+        ...process.env,
+        GIT_INDEX_FILE: tempIndex,
+        GIT_AUTHOR_NAME: 'TimeLad',
+        GIT_AUTHOR_EMAIL: 'timelad@example.com',
+        GIT_COMMITTER_NAME: 'TimeLad',
+        GIT_COMMITTER_EMAIL: 'timelad@example.com',
+        GIT_EDITOR: 'true' // Prevent editor from opening
+      };
+      
+      try {
+        // 3. Reset to the target commit in the temporary index
+        await this.executeGitCommand(`git read-tree ${commitHash}`, repoPath, { env });
+        
+        // 4. Write the tree from the temporary index
+        const { stdout: newTree } = await this.executeGitCommand('git write-tree', repoPath, { env });
+        
+        // 5. Create a commit message
+        // Get the version number by counting commits from the beginning
+        const { stdout: version } = await this.executeGitCommand(
+          `git rev-list --count ${commitHash}`, 
+          repoPath
+        );
+        const commitMessage = `Restored version ${version.trim()}\n\n` +
+                            `This commit restores the repository to a previous state.\n` +
+                            `Original commit: ${originalCommit}\n` +
+                            `Restore time: ${new Date().toISOString()}`;
+        
+        // 6. Create the commit using git commit-tree
+        const { stdout: newCommit } = await this.executeGitCommand(
+          `git commit-tree ${newTree.trim()} -p ${originalCommit} -m "${commitMessage.replace(/"/g, '\\"')}"`,
+          repoPath,
+          { env }
+        );
+        
+        const newCommitHash = newCommit.trim();
+        
+        if (!newCommitHash) {
+          throw new Error('Failed to create new commit');
+        }
+        
+        // 7. Update the current branch to point to the new commit
+        await this.executeGitCommand(
+          `git update-ref refs/heads/${currentBranch} ${newCommitHash}`,
+          repoPath
+        );
+        
+        // 8. Reset the working directory to match the new commit
+        await this.executeGitCommand('git reset --hard', repoPath);
+        
+        return newCommitHash;
+        
+      } catch (error) {
+        console.error('Error during restore commit:', error);
+        throw new Error(`Failed to create restore commit: ${error.message}`);
+      } finally {
+        // Clean up the temporary index file
+        try {
+          if (fs.existsSync(tempIndex)) {
+            fs.unlinkSync(tempIndex);
+          }
+        } catch (e) {
+          console.warn('Failed to clean up temporary index:', e);
+        }
+      }
+      
     } catch (error) {
-      // Clean up temporary file even if commit fails
-      if (fs.existsSync(tempMsgFile)) {
-        fs.unlinkSync(tempMsgFile);
+      // If anything fails, restore the original state
+      try {
+        await this.executeGitCommand(`git checkout ${currentBranch}`, repoPath);
+        await this.executeGitCommand(`git reset --hard ${originalCommit}`, repoPath);
+      } catch (recoveryError) {
+        console.error('Failed to recover original state:', recoveryError);
       }
       throw error;
+    }
+  }
+
+  /**
+   * Restore a specific version by creating a new commit that represents the restore point
+   * This ensures all versions remain accessible in the Git history
+   * @param {Object} commit Commit object to restore
+   * @param {string} repoPath Repository path
+   * @returns {Promise<{success: boolean, message: string, newCommit: string}>} Result of the operation
+   * @throws {Error} If restore operation fails
+   */
+  async restoreVersion(commit, repoPath = null) {
+    if (!repoPath) {
+      repoPath = await this.getRepositoryPath();
+    }
+
+    // Get current branch and commit before any changes
+    const currentBranch = await this.getCurrentBranchName(repoPath);
+    const currentCommit = (await this.executeGitCommand('git rev-parse HEAD', repoPath)).stdout.trim();
+    
+    try {
+      // 1. Check for uncommitted changes and notify user they will be discarded
+      const { hasChanges, files } = await this.getUncommittedChanges(repoPath);
+      
+      if (hasChanges || files.length > 0) {
+        const fileList = files.slice(0, 5).map(f => `- ${f.fileName} (${f.status})`).join('\n');
+        const moreFiles = files.length > 5 ? `\n...and ${files.length - 5} more files` : '';
+        
+        const choice = await vscode.window.showWarningMessage(
+          `You have ${files.length} uncommitted change(s) that will be permanently lost.\n\n${fileList}${moreFiles}\n\nDo you want to discard all changes and restore to the selected version?`,
+          { modal: true },
+          'Discard All Changes and Restore',
+          'Cancel'
+        );
+
+        if (choice !== 'Discard All Changes and Restore') {
+          return { success: false, message: "Restore cancelled by user." };
+        }
+        
+        // Reset any uncommitted changes and remove untracked files
+        await this.executeGitCommand('git reset --hard', repoPath);
+        await this.executeGitCommand('git clean -fd', repoPath);
+        
+        // Check for any remaining untracked or ignored files
+        const { stdout: untracked } = await this.executeGitCommand('git ls-files --others --exclude-standard', repoPath);
+        if (untracked.trim()) {
+          await this.executeGitCommand('git clean -fdx', repoPath);
+        }
+      }
+
+      // 2. Clean the working directory completely before restore
+      await this.executeGitCommand('git reset --hard', repoPath);
+      await this.executeGitCommand('git clean -fdx', repoPath);
+      
+      // 3. Create a restore commit that brings in the target state
+      const newCommitHash = await this.createRestoreCommit(commit.hash, repoPath);
+      
+      // 4. Clean up any files that shouldn't be in the working directory after restore
+      await this.executeGitCommand('git reset --hard', repoPath);
+      await this.executeGitCommand('git clean -fdx', repoPath);
+      
+      // 5. Create a descriptive message for the restore
+      const message = `✅ Successfully created restore point at version ${commit.version}\n` +
+                    `All previous versions remain accessible in the Git history.\n` +
+                    `Use 'git checkout ${currentCommit}' to return to the previous state.`;
+      
+      vscode.window.showInformationMessage(message);
+      
+      // 6. Refresh the VS Code file explorer to reflect the changes
+      vscode.commands.executeCommand('workbench.files.action.refreshFilesExplorer');
+      
+      return { 
+        success: true, 
+        message,
+        newCommit: newCommitHash,
+        previousCommit: currentCommit,
+        branch: currentBranch
+      };
+      
+    } catch (error) {
+      // If anything fails, try to return to the original state
+      try {
+        await this.executeGitCommand(`git checkout ${currentBranch}`, repoPath);
+        await this.executeGitCommand(`git reset --hard ${currentCommit}`, repoPath);
+        await this.executeGitCommand('git clean -fdx', repoPath);
+      } catch (recoveryError) {
+        console.error('Failed to recover original state:', recoveryError);
+      }
+      
+      throw new Error(
+        `${constants.ERRORS.RESTORE_VERSION_FAILED}: ${error.message}`
+      );
+    } finally {
+      this.clearCache();
     }
   }
 
@@ -651,30 +747,10 @@ class GitService {
    */
   async createEmptyRestoreCommit(commit, repoPath) {
     const restoreMessage = `Restored version ${commit.version}`;
-
-    const tempMsgFile = path.join(repoPath, constants.TEMP_COMMIT_FILE);
-
-    try {
-      // Write commit message to temporary file
-      fs.writeFileSync(tempMsgFile, restoreMessage, "utf8");
-
-      // Create empty commit to document the restore action - convert Windows backslashes to forward slashes for git
-      const gitCompatiblePath = tempMsgFile.replace(/\\/g, "/");
-      const commitCommand = constants.GIT_COMMANDS.COMMIT_EMPTY.replace(
-        "%s",
-        gitCompatiblePath
-      );
-      await this.executeGitCommand(commitCommand, repoPath);
-
-      // Clean up temporary file
-      fs.unlinkSync(tempMsgFile);
-    } catch (error) {
-      // Clean up temporary file even if commit fails
-      if (fs.existsSync(tempMsgFile)) {
-        fs.unlinkSync(tempMsgFile);
-      }
-      throw error;
-    }
+    
+    // Create an empty commit with the restore message
+    const newCommitHash = await this.createRestoreCommit(commit.hash, repoPath);
+    return newCommitHash;
   }
 
   /**
@@ -978,16 +1054,6 @@ Please provide a clear, conventional commit message (50 chars or less for the su
   }
 
   /**
-   * Check if a repository exists in the current workspace
-   * Uses enhanced detection with file system scanning
-   * @returns {Promise<boolean>} True if repository exists
-   */
-  async hasRepository() {
-    // Use the enhanced detection method
-    return await this.hasRepositoryRobust();
-  }
-
-  /**
    * Show helpful message when git is not installed
    * @returns {Promise<void>}
    */
@@ -1015,47 +1081,43 @@ After installing Git, please restart VS Code.`;
   }
 
   /**
-   * Offer to create a new repository or load from GitHub when none exists
-   * Uses friendly, non-technical language to explain what this means
-   * @returns {Promise<string|null>} Action to take or null if cancelled
-   */
-  async offerToCreateRepository() {
-    const message = `🚀 Hey there! It looks like this folder isn't set up for tracking your work history yet.
-
-What would you like to do?`;
-
-    const result = await vscode.window.showInformationMessage(
-      message,
-      { modal: true },
-      "Set Up Version Tracking",
-      "Load from GitHub",
-      "Not Right Now"
-    );
-
-    if (result === "Load from GitHub") {
-      // Trigger the Load from GitHub command
-      vscode.commands.executeCommand("timelad.loadFromGitHub");
-      return null; // Don't create a new repo
-    }
-
-    return result === "Set Up Version Tracking" ? "create" : null;
-  }
-
-  /**
    * Create a new Git repository in the current workspace
    * Provides friendly feedback about what's happening
-   * @returns {Promise<string>} Workspace path
+   * @returns {Promise<string>} Workspace path or null if user cancels or chooses GitHub
    */
   async createNewRepository() {
     try {
-      // First, offer the user the choice between creating new repo or loading from GitHub
-      const userChoice = await this.offerToCreateRepository();
+      // Show QuickPick for repository creation options
+      const choice = await vscode.window.showQuickPick(
+        [
+          {
+            label: "$(repo-create) Create New Repository",
+            description: "Initialize a new Git repository in this workspace",
+            value: "create",
+          },
+          {
+            label: "$(github) Load from GitHub",
+            description: "Clone an existing repository from GitHub",
+            value: "github",
+          },
+        ],
+        {
+          placeHolder: "No Git repository found. What would you like to do?",
+          ignoreFocusOut: true,
+        }
+      );
 
-      if (userChoice !== "create") {
-        // User cancelled or chose to load from GitHub (handled in offerToCreateRepository)
+      if (!choice) {
+        return null; // User cancelled
+      }
+
+      if (choice.value === "github") {
+        // Execute the loadFromGitHub command
+        await vscode.commands.executeCommand(constants.COMMANDS.LOAD_FROM_GITHUB);
         return null;
       }
-      // Get the current workspace folder
+
+      // Proceed with creating a new repository
       const workspaceFolders = vscode.workspace.workspaceFolders;
       if (!workspaceFolders || workspaceFolders.length === 0) {
         throw new Error(constants.ERRORS.NO_WORKSPACE_FOLDER);

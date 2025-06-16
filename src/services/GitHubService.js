@@ -209,22 +209,6 @@ class GitHubService {
   }
 
   /**
-   * Get current branch name
-   * @param {string} repoPath Repository path
-   * @returns {Promise<string>} Current branch name
-   */
-  async getCurrentBranch(repoPath) {
-    try {
-      const { stdout } = await execPromise("git branch --show-current", {
-        cwd: repoPath,
-      });
-      return stdout.trim();
-    } catch (error) {
-      throw new Error(`Failed to get current branch: ${error.message}`);
-    }
-  }
-
-  /**
    * Get user's repositories from GitHub
    * @param {number} limit Maximum number of repositories to fetch
    * @returns {Promise<Array>} Array of repository objects
