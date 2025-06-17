@@ -489,6 +489,10 @@ const commonJavaScript = `
     vscode.postMessage({ command: 'saveChanges' });
   }
   
+  function discardChanges() {
+    vscode.postMessage({ command: 'discardChanges' });
+  }
+  
   function copyToClipboard(text) {
     navigator.clipboard.writeText(text).then(() => {
       showCopyFeedback();
@@ -645,9 +649,14 @@ function generateUncommittedChangesSection(uncommittedChanges) {
     <div class="uncommitted-section">
       <div class="uncommitted-header">
         <h3 class="uncommitted-title">💾 Unsaved Changes</h3>
-        <button class="save-btn" onclick="saveChanges()" title="Save changes with AI-generated commit message">
-          💾 Save
-        </button>
+        <div class="uncommitted-actions">
+          <button class="discard-btn" onclick="discardChanges()" title="Discard all changes">
+            🗑️ Discard
+          </button>
+          <button class="save-btn" onclick="saveChanges()" title="Save changes with AI-generated commit message">
+            💾 Save
+          </button>
+        </div>
       </div>
       <ul class="changes-list">
         ${changesListHTML}
@@ -657,6 +666,40 @@ function generateUncommittedChangesSection(uncommittedChanges) {
           ? `<div class="changes-summary">${uncommittedChanges.summary}</div>`
           : ""
       }
+      <style>
+        .uncommitted-actions {
+          display: flex;
+          gap: 8px;
+        }
+        .discard-btn {
+          background: var(--vscode-button-secondaryBackground);
+          color: var(--vscode-button-secondaryForeground);
+          border: none;
+          border-radius: 4px;
+          padding: 6px 12px;
+          cursor: pointer;
+          font-family: var(--vscode-font-family);
+          font-size: 0.9em;
+          transition: background-color 0.2s;
+        }
+        .discard-btn:hover {
+          background: var(--vscode-button-secondaryHoverBackground);
+        }
+        .save-btn {
+          background: var(--vscode-button-background);
+          color: var(--vscode-button-foreground);
+          border: none;
+          border-radius: 4px;
+          padding: 6px 12px;
+          cursor: pointer;
+          font-family: var(--vscode-font-family);
+          font-size: 0.9em;
+          transition: background-color 0.2s;
+        }
+        .save-btn:hover {
+          background: var(--vscode-button-hoverBackground);
+        }
+      </style>
     </div>
   `;
 }

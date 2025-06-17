@@ -1131,6 +1131,31 @@ Please provide a clear, conventional commit message (50 chars or less for the su
   }
 
   /**
+   * Discard all uncommitted changes in the repository
+   * @param {string} repoPath Repository path
+   * @returns {Promise<boolean>} True if changes were discarded successfully
+   */
+  async discardChanges(repoPath = null) {
+    try {
+      const repo = repoPath || (await this.getRepositoryPath());
+      
+      // Reset any staged changes
+      await this.executeGitCommand('git reset --hard HEAD', repo);
+      
+      // Remove any untracked files and directories
+      await this.executeGitCommand('git clean -fd', repo);
+      
+      // Clear the cache to ensure the next read is fresh
+      this.clearCache();
+      
+      return true;
+    } catch (error) {
+      console.error('Error discarding changes:', error);
+      throw new Error(`Failed to discard changes: ${error.message}`);
+    }
+  }
+
+  /**
    * Show helpful message when git is not installed
    * @returns {Promise<void>}
    */

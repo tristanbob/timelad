@@ -134,18 +134,26 @@ class GitHistoryWebviewProvider {
       case "saveChanges":
         await this.saveChanges();
         break;
+        
+      case "discardChanges":
+        await this.saveChanges({ discard: true });
+        break;
+        
       case "createRepository":
         await this.createRepository();
         break;
+        
       case "loadFromGitHub":
         // Execute the Load from GitHub command
         vscode.commands.executeCommand("timelad.loadFromGitHub");
         break;
+        
       case "openUrl":
         if (message.url) {
           await vscode.env.openExternal(vscode.Uri.parse(message.url));
         }
         break;
+        
       default:
         console.warn(
           `${constants.EXTENSION_NAME}: Unknown webview message command: ${message.command}`
@@ -168,6 +176,63 @@ class GitHistoryWebviewProvider {
   }
 
   /**
+   * Show discard changes confirmation dialog
+   * @param {Array} files Array of files that will be discarded
+   * @param {Function} onConfirm Callback when user confirms discard
+   */
+  async showDiscardConfirmDialog(files, onConfirm) {
+    const fileList = files.slice(0, 5).map(file => `• ${file}`).join('\n');
+    const moreFiles = files.length > 5 ? `\n• ...and ${files.length - 5} more files` : '';
+    
+    const selection = await vscode.window.showWarningMessage(
+      `You have ${files.length} uncommitted change(s) that will be discarded:\n\n${fileList}${moreFiles}\n\nAre you sure you want to discard these changes?`,
+      { modal: true },
+      'Discard Changes',
+      'Cancel'
+    );
+
+    if (selection === 'Discard Changes') {
+      onConfirm();
+    }
+  }
+
+  /**
+   * Check for unsaved changes in the workspace
+   * @returns {Promise<boolean>} True if there are unsaved changes
+   */
+  async hasUnsavedChanges() {
+    const unsavedDocuments = vscode.workspace.textDocuments.filter(
+      doc => doc.isDirty && !doc.isUntitled
+    );
+    return unsavedDocuments.length > 0;
+  }
+
+  /**
+   * Show unsaved changes warning
+   * @returns {Promise<boolean>} True if user wants to proceed
+   */
+  async showUnsavedChangesWarning() {
+    const unsavedDocuments = vscode.workspace.textDocuments.filter(
+      doc => doc.isDirty && !doc.isUntitled
+    );
+    
+    const docList = unsavedDocuments.slice(0, 5).map(doc => `• ${doc.fileName.split('/').pop()}`).join('\n');
+    const moreDocs = unsavedDocuments.length > 5 ? `\n• ...and ${unsavedDocuments.length - 5} more files` : '';
+    
+    const choice = await vscode.window.showWarningMessage(
+      `You have ${unsavedDocuments.length} unsaved file(s):\n\n${docList}${moreDocs}\n\nPlease save or discard all changes before restoring a version.`,
+      { modal: true },
+      'Show Files',
+      'OK'
+    );
+
+    if (choice === 'Show Files') {
+      await vscode.commands.executeCommand('workbench.action.showAllEditors');
+    }
+    return false;
+  }
+
+  /**
    * Restore a specific version
    * @param {string} commitHash Commit hash
    */
@@ -175,6 +240,34 @@ class GitHistoryWebviewProvider {
     const commit = this.commits.find((c) => c.hash === commitHash);
     if (!commit) {
       throw new Error("Commit not found");
+    }
+
+    // Check for unsaved changes
+    if (await this.hasUnsavedChanges()) {
+      await this.showUnsavedChangesWarning();
+      return;
+    }
+
+    // Check for unsaved changes in the workspace
+    const unsavedDocuments = vscode.workspace.textDocuments.filter(
+      doc => doc.isDirty && !doc.isUntitled
+    );
+
+    if (unsavedDocuments.length > 0) {
+      const docList = unsavedDocuments.slice(0, 5).map(doc => `• ${doc.fileName.split('/').pop()}`).join('\n');
+      const moreDocs = unsavedDocuments.length > 5 ? `\n• ...and ${unsavedDocuments.length - 5} more files` : '';
+      
+      const choice = await vscode.window.showWarningMessage(
+        `You have ${unsavedDocuments.length} unsaved file(s):\n\n${docList}${moreDocs}\n\nPlease save or discard all changes before restoring a version.`,
+        { modal: true },
+        'Show Files',
+        'OK'
+      );
+
+      if (choice === 'Show Files') {
+        vscode.commands.executeCommand('workbench.action.showAllEditors');
+      }
+      return;
     }
 
     // Show loading spinner in the webview
@@ -350,7 +443,7 @@ class GitHistoryWebviewProvider {
       if (this.view) {
         this.view.webview.html = showSuccess();
         // Wait for 1 second before updating the view
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
       
       // Update commits list without full refresh to prevent flickering
@@ -397,9 +490,44 @@ class GitHistoryWebviewProvider {
   }
 
   /**
+   * Discard all uncommitted changes
+   */
+  async discardChanges() {
+    try {
+      const uncommittedChanges = await this.gitService.getUncommittedChanges();
+      
+      if (!uncommittedChanges || !uncommittedChanges.files || uncommittedChanges.files.length === 0) {
+        vscode.window.showInformationMessage('No uncommitted changes to discard');
+        return;
+      }
+
+      await this.showDiscardConfirmDialog(
+        uncommittedChanges.files.map(f => f.path),
+        async () => {
+          try {
+            await this.gitService.discardChanges();
+            vscode.window.showInformationMessage('All changes have been discarded');
+            await this.refresh();
+          } catch (error) {
+            vscode.window.showErrorMessage(`Failed to discard changes: ${error.message}`);
+          }
+        }
+      );
+    } catch (error) {
+      vscode.window.showErrorMessage(`Error preparing to discard changes: ${error.message}`);
+    }
+  }
+
+  /**
    * Save uncommitted changes
    */
-  async saveChanges() {
+  async saveChanges(options = {}) {
+    // If this is a discard action, handle it separately
+    if (options.discard) {
+      await this.discardChanges();
+      return;
+    }
+
     try {
       vscode.window.showInformationMessage(constants.MESSAGES.SAVING_CHANGES);
 
