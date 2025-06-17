@@ -17,6 +17,7 @@ class GitHistoryWebviewProvider {
     this.uncommittedChanges = null;
     this.gitService = new GitService();
     this.repositoryWatcher = null;
+    this.isRestoring = false; // Flag to track if a restore is in progress
 
     // Setup workspace change listeners for faster repository detection
     this.setupWorkspaceListeners();
@@ -28,6 +29,8 @@ class GitHistoryWebviewProvider {
   setupWorkspaceListeners() {
     // Listen for workspace folder changes
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      if (this.isRestoring) return; // Skip during restore
+      
       // Clear cache when workspace changes
       this.gitService.clearCache();
       // Refresh view if visible
@@ -40,6 +43,7 @@ class GitHistoryWebviewProvider {
     const watcher = vscode.workspace.createFileSystemWatcher("**/.git/**");
 
     watcher.onDidCreate(() => {
+      if (this.isRestoring) return; // Skip during restore
       this.gitService.clearCache();
       if (this.view && this.view.visible) {
         setTimeout(() => this.refresh(), 500); // Small delay to let git finish
@@ -47,6 +51,7 @@ class GitHistoryWebviewProvider {
     });
 
     watcher.onDidDelete(() => {
+      if (this.isRestoring) return; // Skip during restore
       this.gitService.clearCache();
       if (this.view && this.view.visible) {
         this.refresh();
@@ -172,20 +177,199 @@ class GitHistoryWebviewProvider {
       throw new Error("Commit not found");
     }
 
-    // Show loading state in the webview
+    // Show loading spinner in the webview
+    const showLoading = () => {
+      if (!this.view) return '';
+      return `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            body {
+              font-family: var(--vscode-font-family);
+              color: var(--vscode-foreground);
+              background-color: var(--vscode-editor-background);
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              height: 100vh;
+              margin: 0;
+              padding: 20px;
+              box-sizing: border-box;
+              text-align: center;
+            }
+            .spinner {
+              width: 40px;
+              height: 40px;
+              border: 4px solid rgba(0, 0, 0, 0.1);
+              border-radius: 50%;
+              border-top-color: var(--vscode-button-background);
+              animation: spin 1s ease-in-out infinite;
+              margin-bottom: 16px;
+            }
+            .checkmark {
+              width: 40px;
+              height: 40px;
+              border-radius: 50%;
+              display: block;
+              stroke-width: 4;
+              stroke: var(--vscode-testing-iconPassed);
+              stroke-miterlimit: 10;
+              margin: 0 auto 16px;
+              box-shadow: inset 0 0 0 rgba(0, 0, 0, 0.1);
+            }
+            .checkmark__circle {
+              stroke-dasharray: 166;
+              stroke-dashoffset: 166;
+              stroke-width: 2;
+              stroke-miterlimit: 10;
+              stroke: var(--vscode-testing-iconPassed);
+              fill: none;
+              animation: stroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+            }
+            .checkmark__check {
+              transform-origin: 50% 50%;
+              stroke-dasharray: 48;
+              stroke-dashoffset: 48;
+              animation: stroke 0.3s cubic-bezier(0.65, 0, 0.45, 1) 0.8s forwards;
+            }
+            @keyframes stroke {
+              100% { stroke-dashoffset: 0; }
+            }
+            @keyframes spin {
+              to { transform: rotate(360deg); }
+            }
+            .message {
+              margin-top: 16px;
+              color: var(--vscode-foreground);
+              font-size: 14px;
+            }
+            .success {
+              color: var(--vscode-testing-iconPassed);
+            }
+          </style>
+        </head>
+        <body>
+          <div class="spinner"></div>
+          <div class="message">Restoring version ${commit.version}...</div>
+        </body>
+        </html>
+      `;
+    };
+
+    // Show success message with checkmark
+    const showSuccess = () => {
+      if (!this.view) return '';
+      return `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            body {
+              font-family: var(--vscode-font-family);
+              color: var(--vscode-foreground);
+              background-color: var(--vscode-editor-background);
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              height: 100vh;
+              margin: 0;
+              padding: 20px;
+              box-sizing: border-box;
+              text-align: center;
+            }
+            .checkmark {
+              width: 56px;
+              height: 56px;
+              border-radius: 50%;
+              display: block;
+              stroke-width: 4;
+              stroke: var(--vscode-testing-iconPassed);
+              stroke-miterlimit: 10;
+              margin: 0 auto 20px;
+              box-shadow: inset 0 0 0 rgba(0, 0, 0, 0.1);
+            }
+            .checkmark__circle {
+              stroke-dasharray: 166;
+              stroke-dashoffset: 166;
+              stroke-width: 2;
+              stroke-miterlimit: 10;
+              stroke: var(--vscode-testing-iconPassed);
+              fill: none;
+              animation: stroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+            }
+            .checkmark__check {
+              transform-origin: 50% 50%;
+              stroke-dasharray: 48;
+              stroke-dashoffset: 48;
+              animation: stroke 0.3s cubic-bezier(0.65, 0, 0.45, 1) 0.8s forwards;
+            }
+            @keyframes stroke {
+              100% { stroke-dashoffset: 0; }
+            }
+            .message {
+              margin-top: 16px;
+              color: var(--vscode-foreground);
+              font-size: 16px;
+            }
+            .success {
+              color: var(--vscode-testing-iconPassed);
+              font-weight: 500;
+            }
+          </style>
+        </head>
+        <body>
+          <svg class="checkmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
+            <circle class="checkmark__circle" cx="26" cy="26" r="25" fill="none"/>
+            <path class="checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
+          </svg>
+          <div class="message success">Restore complete!</div>
+        </body>
+        </html>
+      `;
+    };
+
+    // Initial loading state
     if (this.view) {
-      this.view.webview.html = getLoadingTemplate('Restoring version...');
+      this.view.webview.html = showLoading();
     }
-    
+
+    // Set restoring flag to prevent multiple refreshes
+    this.isRestoring = true;
     const statusBar = vscode.window.setStatusBarMessage(constants.MESSAGES.RESTORING_VERSION);
 
     try {
+      // Perform the actual restore
       await this.gitService.restoreVersion(commit);
-      // Refresh the view after restore
-      await this.refresh();
+      
+      // Show success message
+      if (this.view) {
+        this.view.webview.html = showSuccess();
+        // Wait for 1 second before updating the view
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      
+      // Update commits list without full refresh to prevent flickering
+      if (this.view) {
+        const commits = await this.gitService.getCommits();
+        this.commits = commits;
+        this.view.webview.html = getSidebarTemplate(commits, this.uncommittedChanges);
+      }
+      
       statusBar.dispose();
     } catch (error) {
+      // If there's an error, do a full refresh to ensure consistent state
+      if (this.view) {
+        await this.refresh();
+      }
       throw new Error(`Failed to restore version: ${error.message}`);
+    } finally {
+      // Always clear the restoring flag, even if there was an error
+      this.isRestoring = false;
     }
   }
 

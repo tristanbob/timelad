@@ -731,19 +731,10 @@ class GitService {
       await this.executeGitCommand('git reset --hard', repoPath);
       await this.executeGitCommand('git clean -fdx', repoPath);
       
-      // 5. Create a descriptive message for the restore
-      const message = `✅ Successfully created restore point at version ${commit.version}\n` +
-                    `All previous versions remain accessible in the Git history.\n` +
-                    `Use 'git checkout ${currentCommit}' to return to the previous state.`;
-      
-      vscode.window.showInformationMessage(message);
-      
-      // 6. Refresh the VS Code file explorer to reflect the changes
-      vscode.commands.executeCommand('workbench.files.action.refreshFilesExplorer');
+      // No notification or refresh needed - the view will be refreshed by the caller
       
       return { 
         success: true, 
-        message,
         newCommit: newCommitHash,
         previousCommit: currentCommit,
         branch: currentBranch
