@@ -528,18 +528,199 @@ class GitHistoryWebviewProvider {
       return;
     }
 
-    try {
-      vscode.window.showInformationMessage(constants.MESSAGES.SAVING_CHANGES);
+    // Show loading spinner in the webview
+    const showLoading = () => {
+      if (!this.view) return '';
+      return `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            body {
+              font-family: var(--vscode-font-family);
+              color: var(--vscode-foreground);
+              background-color: var(--vscode-editor-background);
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              height: 100vh;
+              margin: 0;
+              padding: 20px;
+              box-sizing: border-box;
+              text-align: center;
+            }
+            .spinner {
+              width: 40px;
+              height: 40px;
+              border: 4px solid rgba(0, 0, 0, 0.1);
+              border-radius: 50%;
+              border-top-color: var(--vscode-button-background);
+              animation: spin 1s ease-in-out infinite;
+              margin-bottom: 16px;
+            }
+            .checkmark {
+              width: 40px;
+              height: 40px;
+              border-radius: 50%;
+              display: block;
+              stroke-width: 4;
+              stroke: var(--vscode-testing-iconPassed);
+              stroke-miterlimit: 10;
+              margin: 0 auto 16px;
+              box-shadow: inset 0 0 0 rgba(0, 0, 0, 0.1);
+            }
+            .checkmark__circle {
+              stroke-dasharray: 166;
+              stroke-dashoffset: 166;
+              stroke-width: 2;
+              stroke-miterlimit: 10;
+              stroke: var(--vscode-testing-iconPassed);
+              fill: none;
+              animation: stroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+            }
+            .checkmark__check {
+              transform-origin: 50% 50%;
+              stroke-dasharray: 48;
+              stroke-dashoffset: 48;
+              animation: stroke 0.3s cubic-bezier(0.65, 0, 0.45, 1) 0.8s forwards;
+            }
+            @keyframes stroke {
+              100% { stroke-dashoffset: 0; }
+            }
+            @keyframes spin {
+              to { transform: rotate(360deg); }
+            }
+            .message {
+              margin-top: 16px;
+              color: var(--vscode-foreground);
+              font-size: 14px;
+            }
+            .success {
+              color: var(--vscode-testing-iconPassed);
+            }
+          </style>
+        </head>
+        <body>
+          <div class="spinner"></div>
+          <div class="message">Saving changes...</div>
+        </body>
+        </html>
+      `;
+    };
 
+    // Show success message with checkmark
+    const showSuccess = (commitMessage) => {
+      if (!this.view) return '';
+      return `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            body {
+              font-family: var(--vscode-font-family);
+              color: var(--vscode-foreground);
+              background-color: var(--vscode-editor-background);
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              height: 100vh;
+              margin: 0;
+              padding: 20px;
+              box-sizing: border-box;
+              text-align: center;
+            }
+            .checkmark {
+              width: 56px;
+              height: 56px;
+              border-radius: 50%;
+              display: block;
+              stroke-width: 4;
+              stroke: var(--vscode-testing-iconPassed);
+              stroke-miterlimit: 10;
+              margin: 0 auto 20px;
+              box-shadow: inset 0 0 0 rgba(0, 0, 0, 0.1);
+            }
+            .checkmark__circle {
+              stroke-dasharray: 166;
+              stroke-dashoffset: 166;
+              stroke-width: 2;
+              stroke-miterlimit: 10;
+              stroke: var(--vscode-testing-iconPassed);
+              fill: none;
+              animation: stroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+            }
+            .checkmark__check {
+              transform-origin: 50% 50%;
+              stroke-dasharray: 48;
+              stroke-dashoffset: 48;
+              animation: stroke 0.3s cubic-bezier(0.65, 0, 0.45, 1) 0.8s forwards;
+            }
+            @keyframes stroke {
+              100% { stroke-dashoffset: 0; }
+            }
+            .message {
+              margin-top: 16px;
+              color: var(--vscode-foreground);
+              font-size: 16px;
+              max-width: 300px;
+              word-wrap: break-word;
+            }
+            .commit-message {
+              margin-top: 8px;
+              font-style: italic;
+              color: var(--vscode-descriptionForeground);
+              max-width: 280px;
+              word-wrap: break-word;
+            }
+            .success {
+              color: var(--vscode-testing-iconPassed);
+            }
+          </style>
+        </head>
+        <body>
+          <svg class="checkmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
+            <circle class="checkmark__circle" cx="26" cy="26" r="25" fill="none"/>
+            <path class="checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
+          </svg>
+          <div class="message success">Changes saved!</div>
+          <div class="commit-message">"${commitMessage.replace(/"/g, '&quot;')}"</div>
+        </body>
+        </html>
+      `;
+    };
+
+    try {
+      // Show loading spinner
+      if (this.view) {
+        this.view.webview.html = showLoading();
+      }
+
+      // Save changes
       const commitMessage = await this.gitService.saveChanges();
 
-      vscode.window.showInformationMessage(
-        `${constants.MESSAGES.CHANGES_SAVED}\nCommit: "${commitMessage}"`
-      );
-
-      // Refresh the view after saving
-      await this.refresh();
+      // Show success message
+      if (this.view) {
+        this.view.webview.html = showSuccess(commitMessage);
+        
+        // After 2 seconds, refresh the view
+        setTimeout(async () => {
+          await this.refresh();
+        }, 3000);
+      } else {
+        vscode.window.showInformationMessage(
+          `${constants.MESSAGES.CHANGES_SAVED}\nCommit: "${commitMessage}"`
+        );
+        await this.refresh();
+      }
     } catch (error) {
+      if (this.view) {
+        await this.refresh();
+      }
+      
       if (error.message === constants.MESSAGES.NO_UNCOMMITTED_CHANGES) {
         vscode.window.showInformationMessage(error.message);
       } else {
