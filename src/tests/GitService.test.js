@@ -156,13 +156,9 @@ async function runSimpleTests() {
     },
 
     "RestoreVersion creates proper commit message": () => {
-      // Test that createRestoreCommit and createEmptyRestoreCommit methods exist
+      // Test that createRestoreCommit method exists
       const gitService = new GitService();
       assert.strictEqual(typeof gitService.createRestoreCommit, "function");
-      assert.strictEqual(
-        typeof gitService.createEmptyRestoreCommit,
-        "function"
-      );
       console.log("✓ Restore methods exist test passed");
     },
 

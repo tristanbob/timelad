@@ -542,17 +542,6 @@ class GitService {
   }
 
   /**
-   * Create a new branch at a specific commit
-   * @param {string} branchName Name of the new branch
-   * @param {string} commitHash Commit hash to create branch at
-   * @param {string} repoPath Repository path
-   * @returns {Promise<void>}
-   */
-  async createBranchAtCommit(branchName, commitHash, repoPath) {
-    await this.executeGitCommand(`git branch ${branchName} ${commitHash}`, repoPath);
-  }
-
-  /**
    * Create a new commit that restores the working directory to a specific commit
    * using Git's plumbing commands to avoid editor issues
    * @param {string} commitHash Commit hash to restore
@@ -570,8 +559,7 @@ class GitService {
     
     try {
       // 1. Get the current tree and parent commit
-      const { stdout: currentTree } = await this.executeGitCommand('git write-tree', repoPath);
-      
+        
       // 2. Create a temporary index file
       const tempIndex = path.join(repoPath, '.git', `index-${Date.now()}`);
       
@@ -777,19 +765,6 @@ class GitService {
     } finally {
       this.clearCache();
     }
-  }
-
-  /**
-   * Create an empty restore commit when no changes are detected
-   * @param {Object} commit Commit object to restore
-   * @param {string} repoPath Repository path
-   */
-  async createEmptyRestoreCommit(commit, repoPath) {
-    const restoreMessage = `Restored version ${commit.version}`;
-    
-    // Create an empty commit with the restore message
-    const newCommitHash = await this.createRestoreCommit(commit.hash, repoPath);
-    return newCommitHash;
   }
 
   /**
