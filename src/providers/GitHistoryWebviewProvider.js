@@ -118,16 +118,24 @@ class GitHistoryWebviewProvider {
         await this.showCommitDetails(message.hash);
         break;
 
-      case "restoreVersion":
-        await this.restoreVersion(message.hash);
+      case "requestRestore":
+        await this.requestRestore(message.hash);
+        break;
+
+      case "confirmRestore":
+        await this.restoreVersion(message.hash, true);
         break;
 
       case "saveChanges":
         await this.saveChanges();
         break;
         
-      case "discardChanges":
-        await this.saveChanges({ discard: true });
+      case "requestDiscard":
+        await this.requestDiscard();
+        break;
+
+      case "confirmDiscard":
+        await this.discardChanges(true);
         break;
         
       case "createRepository":
@@ -175,10 +183,47 @@ class GitHistoryWebviewProvider {
   }
 
   /**
-   * Restore a specific version
+   * Request restore - checks for uncommitted changes and shows modal if needed
    * @param {string} commitHash Commit hash
    */
-  async restoreVersion(commitHash) {
+  async requestRestore(commitHash) {
+    const commit = this.commits.find((c) => c.hash === commitHash);
+    if (!commit) {
+      await this.notificationService.showError("Commit not found");
+      return;
+    }
+
+    try {
+      const repoPath = await this.gitService.getRepositoryPath();
+      const { hasChanges, files } = await this.gitService.getUncommittedChanges(repoPath);
+      
+      if (hasChanges || files.length > 0) {
+        // Show custom confirmation modal in webview
+        this.view.webview.postMessage({
+          command: 'showConfirmation',
+          title: 'Confirm Version Restore',
+          message: `You have ${files.length} uncommitted change(s) that will be permanently lost.`,
+          files: files.map(f => ({
+            fileName: f.fileName,
+            status: f.status
+          })),
+          commitHash: commitHash
+        });
+      } else {
+        // No uncommitted changes, proceed directly
+        await this.restoreVersion(commitHash, true);
+      }
+    } catch (error) {
+      await this.notificationService.showError(`Error checking for changes: ${error.message}`);
+    }
+  }
+
+  /**
+   * Restore a specific version
+   * @param {string} commitHash Commit hash
+   * @param {boolean} skipConfirmation Skip confirmation checks
+   */
+  async restoreVersion(commitHash, skipConfirmation = false) {
     const commit = this.commits.find((c) => c.hash === commitHash);
     if (!commit) {
       throw new Error("Commit not found");
@@ -205,7 +250,12 @@ class GitHistoryWebviewProvider {
     const statusBar = this.notificationService.setStatusBarMessage(constants.MESSAGES.RESTORING_VERSION);
 
     try {
-      await this.gitService.restoreVersion(commit);
+      const result = await this.gitService.restoreVersion(commit, null, skipConfirmation);
+      
+      if (!result.success) {
+        await this.notificationService.showError(result.message);
+        return;
+      }
       
       // Show success message
       if (this.view) {
@@ -253,9 +303,38 @@ class GitHistoryWebviewProvider {
   }
 
   /**
-   * Discard all uncommitted changes
+   * Request discard - checks for uncommitted changes and shows modal
    */
-  async discardChanges() {
+  async requestDiscard() {
+    try {
+      const repoPath = await this.gitService.getRepositoryPath();
+      const { hasChanges, files } = await this.gitService.getUncommittedChanges(repoPath);
+      
+      if (!hasChanges || !files || files.length === 0) {
+        await this.notificationService.showInfo('No uncommitted changes to discard');
+        return;
+      }
+
+      // Show custom discard confirmation modal in webview
+      this.view.webview.postMessage({
+        command: 'showDiscardConfirmation',
+        title: 'Confirm Discard Changes',
+        message: `You are about to permanently discard ${files.length} uncommitted change(s).`,
+        files: files.map(f => ({
+          fileName: f.fileName,
+          status: f.status
+        }))
+      });
+    } catch (error) {
+      await this.notificationService.showError(`Error checking for changes: ${error.message}`);
+    }
+  }
+
+  /**
+   * Discard all uncommitted changes
+   * @param {boolean} skipConfirmation Skip confirmation checks
+   */
+  async discardChanges(skipConfirmation = false) {
     try {
       const uncommittedChanges = await this.gitService.getUncommittedChanges();
       
@@ -264,22 +343,33 @@ class GitHistoryWebviewProvider {
         return;
       }
 
-      const fileNames = uncommittedChanges.files.map(f => f.fileName);
-      const shouldDiscard = await this.notificationService.showDestructiveConfirmation(
-        'You have uncommitted changes that will be discarded:',
-        fileNames,
-        'Discard Changes',
-        'Cancel'
-      );
+      if (!skipConfirmation) {
+        const fileNames = uncommittedChanges.files.map(f => f.fileName);
+        const shouldDiscard = await this.notificationService.showDestructiveConfirmation(
+          'You have uncommitted changes that will be discarded:',
+          fileNames,
+          'Discard Changes',
+          'Cancel'
+        );
 
-      if (shouldDiscard) {
-        try {
-          await this.gitService.discardChanges();
-          await this.notificationService.showInfo('All changes have been discarded');
-          await this.refresh();
-        } catch (error) {
-          await this.notificationService.showError(`Failed to discard changes: ${error.message}`);
+        if (!shouldDiscard) {
+          return;
         }
+      }
+
+      try {
+        await this.gitService.discardChanges();
+        
+        // Explicitly clear the local uncommitted changes state
+        this.uncommittedChanges = { hasChanges: false, files: [], summary: "" };
+        
+        // Clear cache and refresh to ensure state is properly updated
+        this.gitService.clearCache();
+        await this.refresh();
+        
+        await this.notificationService.showInfo('All changes have been discarded');
+      } catch (error) {
+        await this.notificationService.showError(`Failed to discard changes: ${error.message}`);
       }
     } catch (error) {
       await this.notificationService.showError(`Error preparing to discard changes: ${error.message}`);
