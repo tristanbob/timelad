@@ -1,16 +1,4 @@
-# TimeLad (v0.1.1 - Pre-Release)
-
-> **⚠️ PRE-RELEASE WARNING ⚠️**
->
-> **This is a pre-release version (v0.1.1) intended for testing purposes only.**
->
-> - **Data Loss Risk**: This software may cause data loss or repository corruption
-> - **Testing Only**: Do not use with important or production data
-> - **Backup Required**: Always backup your repositories before testing
-> - **Experimental Features**: All features are experimental and may not work as expected
-> - **No Support**: This pre-release version comes with no guarantees or support
->
-> **Only use this extension with disposable test data that you can afford to lose.**
+# TimeLad
 
 A powerful VS Code extension that makes Git version control more accessible and intuitive, with a focus on safety and ease of use.
 
@@ -94,23 +82,24 @@ Please report issues on the GitHub repository.
 
 ## Release Notes
 
-### 0.1.0-alpha
+### 0.2.0
 
-⚠️ **ALPHA RELEASE** - TimeLad is currently in alpha testing.
-
-**IMPORTANT**: This is an experimental alpha version:
-
-- 🚧 **Testing Only**: For evaluation purposes with non-critical data
-- ⚠️ **Use Caution**: May affect your Git repository state
-- 🔄 **Backup First**: Always backup repositories before testing
-- 📝 **Feedback Welcome**: Please report issues on GitHub
+**Latest Stable Release** - TimeLad is now production-ready!
 
 ### What's New
 
-- Added Uncommitted Changes detection in sidebar
-- Implemented AI-Generated Commit Messages
-- New Save Changes command with one-click commit
-- Enhanced UI with visual indicators for file status
-- Improved version navigation and information display
+- **Enhanced Performance**: Progressive loading for large repositories with pagination
+- **Better Architecture**: Improved service architecture with dependency injection
+- **State Management**: Enhanced webview state management and refresh handling
+- **Package Optimization**: Reduced extension size by excluding test artifacts
+- **Stability**: Comprehensive testing and improved error handling
+
+### Recent Features
+
+- **Uncommitted Changes Detection**: View all uncommitted changes in the sidebar
+- **AI-Generated Commit Messages**: Smart commit message suggestions
+- **One-Click Saves**: Save changes with intelligent commit messages
+- **Safe Version Restoration**: Travel back to any version without losing history
+- **Visual File Status**: Color-coded indicators for file changes
 
 For the complete list of changes, see the [CHANGELOG](CHANGELOG.md).

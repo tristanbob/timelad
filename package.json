@@ -2,7 +2,7 @@
   "name": "timelad",
   "displayName": "TimeLad",
   "description": "A beginner-friendly Git time travel extension with safe version restoration and beautiful interactive history",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "victrisai",
   "repository": {
     "type": "git",
