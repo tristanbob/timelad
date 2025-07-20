@@ -9,6 +9,15 @@ module.exports = {
   MAX_COMMITS_SIDEBAR: 30,
   MAX_COMMITS_PANEL: 30,
   MAX_COMMITS_QUICKPICK: 20,
+  
+  // Progressive loading settings
+  PROGRESSIVE_LOADING: {
+    INITIAL_LOAD_SIZE: 20,
+    LOAD_MORE_SIZE: 15,
+    PRELOAD_THRESHOLD: 5, // Load more when 5 items from bottom
+    MAX_DOM_ITEMS: 100, // Keep only 100 items in DOM for performance
+    BUFFER_SIZE: 10, // Keep 10 extra items above/below viewport
+  },
 
   // Extension identifiers
   EXTENSION_NAME: "TimeLad",

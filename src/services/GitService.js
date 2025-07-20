@@ -432,6 +432,69 @@ class GitService {
   }
 
   /**
+   * Get commits with pagination support for progressive loading
+   * @param {Object} options Pagination options
+   * @returns {Promise<{commits: Array, hasMore: boolean, totalCount: number}>} Paginated commits result
+   */
+  async getCommitsPaginated({
+    offset = 0,
+    limit = constants.PROGRESSIVE_LOADING.INITIAL_LOAD_SIZE,
+    repoPath = null,
+    useCache = true
+  } = {}) {
+    if (!repoPath) {
+      repoPath = await this.getRepositoryPath();
+    }
+
+    const cacheKey = `commits-paginated-${repoPath}-${offset}-${limit}`;
+    if (useCache) {
+      const cached = this.cache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < constants.CACHE_TIMEOUT) {
+        return cached.data;
+      }
+    }
+
+    const totalCommits = await this.getCommitCount(repoPath);
+    const command = `git log --skip=${offset} -n ${limit} --pretty=format:"%h|%an|%ad|%s" --date=format:"%Y-%m-%d %H:%M:%S"`;
+    const { stdout } = await this.executeGitCommand(command, repoPath);
+
+    const commits = stdout
+      .split("\n")
+      .map((line, index) => {
+        if (!line.trim()) return null;
+        const [hash, author, date, subject] = line.split("|");
+        const versionNumber = totalCommits - offset - index;
+        return {
+          hash: hash || "",
+          author: author || "Unknown",
+          date: date || "",
+          subject: subject || "No subject",
+          version: versionNumber,
+        };
+      })
+      .filter((commit) => commit !== null);
+
+    const hasMore = offset + commits.length < totalCommits;
+    
+    const result = {
+      commits,
+      hasMore,
+      totalCount: totalCommits,
+      offset,
+      nextOffset: offset + commits.length
+    };
+
+    if (useCache) {
+      this.cache.set(cacheKey, {
+        data: result,
+        timestamp: Date.now(),
+      });
+    }
+
+    return result;
+  }
+
+  /**
    * Get current branch information
    * @returns {Promise<{branch: string, version: number}>} Current branch and version
    */
@@ -718,9 +781,10 @@ class GitService {
    * Restore a specific version by creating a new commit
    * @param {Object} commit Commit object to restore
    * @param {string} repoPath Repository path
+   * @param {boolean} skipConfirmation Skip uncommitted changes confirmation
    * @returns {Promise<{success: boolean, message: string, newCommit: string}>} Result of the operation
    */
-  async restoreVersion(commit, repoPath = null) {
+  async restoreVersion(commit, repoPath = null, skipConfirmation = false) {
     if (!repoPath) {
       repoPath = await this.getRepositoryPath();
     }
@@ -734,10 +798,12 @@ class GitService {
       const { hasChanges, files } = await this.getUncommittedChanges(repoPath);
       
       if (hasChanges || files.length > 0) {
-        const shouldProceed = await this.notificationService.showUncommittedChangesWarning(files);
+        if (!skipConfirmation) {
+          const shouldProceed = await this.notificationService.showUncommittedChangesWarning(files);
 
-        if (!shouldProceed) {
-          return { success: false, message: "Restore cancelled by user." };
+          if (!shouldProceed) {
+            return { success: false, message: "Restore cancelled by user." };
+          }
         }
         
         await this.executeGitCommand('git reset --hard', repoPath);

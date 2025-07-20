@@ -18,6 +18,15 @@ class GitHistoryWebviewProvider {
     this.commits = [];
     this.uncommittedChanges = null;
     this.isRestoring = false;
+    this.isDisposed = false;
+    
+    // Progressive loading state
+    this.paginationState = {
+      currentOffset: 0,
+      hasMore: true,
+      totalCount: 0,
+      isLoading: false
+    };
 
     // Initialize services
     this.notificationService = new NotificationService();
@@ -103,7 +112,17 @@ class GitHistoryWebviewProvider {
         await this.handleWebviewMessage(message);
       } catch (error) {
         console.error(`${constants.EXTENSION_NAME}: Error handling webview message:`, error);
-        await this.notificationService.showError(error.message);
+        // Check if error is due to extension being disposed/canceled during shutdown
+        if (error.name === 'Canceled' || error.message === 'Canceled') {
+          console.log(`${constants.EXTENSION_NAME}: Webview message canceled during extension shutdown`);
+          return;
+        }
+        try {
+          await this.notificationService.showError(error.message);
+        } catch (notificationError) {
+          // Silently fail if notification service is unavailable during shutdown
+          console.error(`${constants.EXTENSION_NAME}: Failed to show error notification:`, notificationError);
+        }
       }
     });
   }
@@ -113,6 +132,10 @@ class GitHistoryWebviewProvider {
    * @param {Object} message Message from webview
    */
   async handleWebviewMessage(message) {
+    if (this.isDisposed) {
+      console.log(`${constants.EXTENSION_NAME}: Ignoring webview message - provider is disposed`);
+      return;
+    }
     switch (message.command) {
       case "showCommit":
         await this.showCommitDetails(message.hash);
@@ -136,6 +159,10 @@ class GitHistoryWebviewProvider {
 
       case "confirmDiscard":
         await this.discardChanges(true);
+        break;
+        
+      case "loadMoreCommits":
+        await this.loadMoreCommits();
         break;
         
       case "createRepository":
@@ -443,6 +470,72 @@ class GitHistoryWebviewProvider {
   }
 
   /**
+   * Load more commits for progressive loading
+   */
+  async loadMoreCommits() {
+    if (this.paginationState.isLoading || !this.paginationState.hasMore) {
+      return;
+    }
+
+    try {
+      this.paginationState.isLoading = true;
+      
+      // Send loading state to webview
+      this.view.webview.postMessage({
+        command: 'setLoadingMore',
+        isLoading: true
+      });
+
+      const result = await this.gitService.getCommitsPaginated({
+        offset: this.paginationState.currentOffset,
+        limit: constants.PROGRESSIVE_LOADING.LOAD_MORE_SIZE
+      });
+
+      // Append new commits to existing ones
+      this.commits.push(...result.commits);
+      
+      // Update pagination state
+      this.paginationState.currentOffset = result.nextOffset;
+      this.paginationState.hasMore = result.hasMore;
+      this.paginationState.totalCount = result.totalCount;
+
+      // Send new commits to webview
+      this.view.webview.postMessage({
+        command: 'appendCommits',
+        commits: result.commits,
+        hasMore: result.hasMore,
+        totalCount: result.totalCount
+      });
+
+    } catch (error) {
+      console.error('Error loading more commits:', error);
+      this.view.webview.postMessage({
+        command: 'showError',
+        error: error.message
+      });
+    } finally {
+      this.paginationState.isLoading = false;
+      this.view.webview.postMessage({
+        command: 'setLoadingMore',
+        isLoading: false
+      });
+    }
+  }
+
+  /**
+   * Reset pagination state for refresh
+   */
+  resetPaginationState() {
+    this.paginationState = {
+      currentOffset: 0,
+      hasMore: true,
+      totalCount: 0,
+      isLoading: false
+    };
+    this.commits = [];
+  }
+
+  /**
    * Refresh the webview content
    */
   async refresh() {
@@ -469,15 +562,34 @@ class GitHistoryWebviewProvider {
         return;
       }
 
-      const [commits, uncommittedChanges] = await Promise.all([
-        this.gitService.getCommits(constants.MAX_COMMITS_SIDEBAR),
+      // Reset pagination state on refresh
+      this.resetPaginationState();
+
+      const [paginatedResult, uncommittedChanges] = await Promise.all([
+        this.gitService.getCommitsPaginated({
+          offset: 0,
+          limit: constants.PROGRESSIVE_LOADING.INITIAL_LOAD_SIZE
+        }),
         this.gitService.getUncommittedChanges(),
       ]);
 
-      this.commits = commits;
+      this.commits = paginatedResult.commits;
       this.uncommittedChanges = uncommittedChanges;
+      
+      // Update pagination state
+      this.paginationState.currentOffset = paginatedResult.nextOffset;
+      this.paginationState.hasMore = paginatedResult.hasMore;
+      this.paginationState.totalCount = paginatedResult.totalCount;
 
-      this.view.webview.html = getSidebarTemplate(this.commits, this.uncommittedChanges);
+      this.view.webview.html = getSidebarTemplate(
+        this.commits, 
+        this.uncommittedChanges, 
+        {
+          hasMore: this.paginationState.hasMore,
+          totalCount: this.paginationState.totalCount,
+          showingCount: this.commits.length
+        }
+      );
     } catch (error) {
       console.error(`${constants.EXTENSION_NAME}: Error refreshing commits:`, error);
 
@@ -965,10 +1077,12 @@ class GitHistoryWebviewProvider {
    * Dispose of resources
    */
   dispose() {
+    this.isDisposed = true;
     if (this.repositoryWatcher) {
       this.repositoryWatcher.dispose();
       this.repositoryWatcher = null;
     }
+    console.log(`${constants.EXTENSION_NAME}: GitHistoryWebviewProvider disposed`);
   }
 }
 

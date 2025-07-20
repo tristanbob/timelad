@@ -236,6 +236,168 @@ const baseStyles = `
   .copy-feedback.show {
     opacity: 1;
   }
+  
+  /* Confirmation Modal Styles */
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+    animation: fadeIn 0.2s ease;
+  }
+  
+  .modal-overlay.show {
+    display: flex;
+  }
+  
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  
+  @keyframes slideIn {
+    from { 
+      opacity: 0;
+      transform: translateY(-20px) scale(0.95);
+    }
+    to { 
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  
+  .modal {
+    background-color: var(--vscode-editor-background);
+    border: 2px solid var(--vscode-panel-border);
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    padding: 24px;
+    max-width: 500px;
+    width: 90%;
+    max-height: 80%;
+    overflow-y: auto;
+    animation: slideIn 0.3s ease;
+  }
+  
+  .modal-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+  }
+  
+  .modal-icon {
+    font-size: 1.5em;
+    margin-right: 12px;
+    color: var(--vscode-terminal-ansiYellow);
+  }
+  
+  .modal-title {
+    font-size: 1.2em;
+    font-weight: 600;
+    color: var(--vscode-editor-foreground);
+    margin: 0;
+  }
+  
+  .modal-content {
+    margin-bottom: 20px;
+    line-height: 1.6;
+    color: var(--vscode-editor-foreground);
+  }
+  
+  .modal-warning {
+    background-color: var(--vscode-inputValidation-warningBackground);
+    border: 1px solid var(--vscode-inputValidation-warningBorder);
+    border-radius: 4px;
+    padding: 12px;
+    margin: 12px 0;
+  }
+  
+  .modal-file-list {
+    background-color: var(--vscode-editor-inactiveSelectionBackground);
+    border-radius: 4px;
+    padding: 12px;
+    margin: 12px 0;
+    max-height: 150px;
+    overflow-y: auto;
+  }
+  
+  .modal-file-item {
+    display: flex;
+    align-items: center;
+    padding: 4px 0;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 0.9em;
+  }
+  
+  .modal-file-status {
+    display: inline-block;
+    width: 20px;
+    margin-right: 8px;
+    font-weight: bold;
+    text-align: center;
+  }
+  
+  .modal-file-status.modified { color: var(--vscode-terminal-ansiYellow); }
+  .modal-file-status.added { color: var(--vscode-terminal-ansiGreen); }
+  .modal-file-status.deleted { color: var(--vscode-terminal-ansiRed); }
+  .modal-file-status.untracked { color: var(--vscode-terminal-ansiBlue); }
+  
+  .modal-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    margin-top: 20px;
+  }
+  
+  .modal-btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.9em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 100px;
+  }
+  
+  .modal-btn:hover {
+    transform: translateY(-1px);
+  }
+  
+  .modal-btn-primary {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+  }
+  
+  .modal-btn-primary:hover {
+    background-color: var(--vscode-button-hoverBackground);
+  }
+  
+  .modal-btn-danger {
+    background-color: var(--vscode-terminal-ansiRed);
+    color: var(--vscode-editor-background);
+  }
+  
+  .modal-btn-danger:hover {
+    background-color: #c0392b;
+  }
+  
+  .modal-btn-secondary {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+  }
+  
+  .modal-btn-secondary:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+  }
 `;
 
 /**
@@ -378,6 +540,64 @@ const commitListStyles = `
     color: var(--vscode-descriptionForeground);
     margin: 0;
   }
+  
+  .load-more-container {
+    text-align: center;
+    padding: 20px;
+    margin-top: 16px;
+    border-top: 1px solid var(--vscode-panel-border);
+  }
+  
+  .load-more-btn {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: none;
+    border-radius: 6px;
+    padding: 12px 24px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 auto;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  
+  .load-more-btn:hover {
+    background: var(--vscode-button-hoverBackground);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+  }
+  
+  .loading-more {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 14px;
+    margin-top: 16px;
+  }
+  
+  .spinner-small {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--vscode-editor-inactiveSelectionBackground);
+    border-top: 2px solid var(--vscode-terminal-ansiBlue);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  
+  .infinite-scroll-indicator {
+    text-align: center;
+    padding: 16px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.9em;
+    border-top: 1px solid var(--vscode-panel-border);
+    margin-top: 8px;
+  }
 `;
 
 /**
@@ -482,15 +702,247 @@ const commonJavaScript = `
   }
   
   function restoreCommit(hash) {
-    vscode.postMessage({ command: 'restoreVersion', hash: hash });
+    vscode.postMessage({ command: 'requestRestore', hash: hash });
   }
+  
+  function showConfirmationModal(title, message, files, commitHash) {
+    const overlay = document.getElementById('confirmationModal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalMessage = document.getElementById('modalMessage');
+    const filesList = document.getElementById('modalFilesList');
+    const confirmBtn = document.getElementById('confirmRestoreBtn');
+    
+    modalTitle.textContent = title;
+    modalMessage.textContent = message;
+    
+    // Clear and populate files list
+    filesList.innerHTML = '';
+    if (files && files.length > 0) {
+      files.forEach(file => {
+        const fileItem = document.createElement('div');
+        fileItem.className = 'modal-file-item';
+        
+        const statusClass = file.status === 'M' ? 'modified' :
+                           file.status === 'A' ? 'added' :
+                           file.status === 'D' ? 'deleted' :
+                           file.status === '?' ? 'untracked' : 'modified';
+        
+        const statusSymbol = file.status === 'M' ? 'M' :
+                            file.status === 'A' ? 'A' :
+                            file.status === 'D' ? 'D' :
+                            file.status === '?' ? '?' : 'M';
+        
+        fileItem.innerHTML = \`
+          <span class="modal-file-status \${statusClass}">\${statusSymbol}</span>
+          <span>\${file.fileName}</span>
+        \`;
+        filesList.appendChild(fileItem);
+      });
+    }
+    
+    // Store commit hash for confirmation
+    confirmBtn.setAttribute('data-commit-hash', commitHash);
+    
+    overlay.classList.add('show');
+  }
+  
+  function hideConfirmationModal() {
+    const overlay = document.getElementById('confirmationModal');
+    overlay.classList.remove('show');
+  }
+  
+  function confirmRestore() {
+    const confirmBtn = document.getElementById('confirmRestoreBtn');
+    const commitHash = confirmBtn.getAttribute('data-commit-hash');
+    
+    hideConfirmationModal();
+    vscode.postMessage({ command: 'confirmRestore', hash: commitHash });
+  }
+  
+  function cancelRestore() {
+    hideConfirmationModal();
+  }
+  
+  function showDiscardModal(title, message, files) {
+    const overlay = document.getElementById('discardModal');
+    const modalMessage = document.getElementById('discardMessage');
+    const filesList = document.getElementById('discardFilesList');
+    
+    modalMessage.textContent = message;
+    
+    // Clear and populate files list
+    filesList.innerHTML = '';
+    if (files && files.length > 0) {
+      files.forEach(file => {
+        const fileItem = document.createElement('div');
+        fileItem.className = 'modal-file-item';
+        
+        const statusClass = file.status === 'M' ? 'modified' :
+                           file.status === 'A' ? 'added' :
+                           file.status === 'D' ? 'deleted' :
+                           file.status === '?' ? 'untracked' : 'modified';
+        
+        const statusSymbol = file.status === 'M' ? 'M' :
+                            file.status === 'A' ? 'A' :
+                            file.status === 'D' ? 'D' :
+                            file.status === '?' ? '?' : 'M';
+        
+        fileItem.innerHTML = \`
+          <span class="modal-file-status \${statusClass}">\${statusSymbol}</span>
+          <span>\${file.fileName}</span>
+        \`;
+        filesList.appendChild(fileItem);
+      });
+    }
+    
+    overlay.classList.add('show');
+  }
+  
+  function hideDiscardModal() {
+    const overlay = document.getElementById('discardModal');
+    overlay.classList.remove('show');
+  }
+  
+  function confirmDiscard() {
+    hideDiscardModal();
+    vscode.postMessage({ command: 'confirmDiscard' });
+  }
+  
+  function cancelDiscard() {
+    hideDiscardModal();
+  }
+
+  // Progressive loading functions
+  function loadMoreCommits() {
+    vscode.postMessage({ command: 'loadMoreCommits' });
+  }
+  
+  function appendCommits(newCommits) {
+    const commitList = document.getElementById('commitList');
+    if (!commitList) return;
+    
+    newCommits.forEach((commit, index) => {
+      const existingCommits = commitList.children.length;
+      const commitItem = document.createElement('li');
+      commitItem.className = 'commit-item';
+      commitItem.setAttribute('data-hash', commit.hash);
+      commitItem.innerHTML = generateCommitItemHTML(commit, existingCommits + index);
+      commitList.appendChild(commitItem);
+    });
+  }
+  
+  function generateCommitItemHTML(commit, index) {
+    return \`
+      <div>
+          <span class="commit-version" data-hash="\${commit.hash}" title="Click to copy git hash">Version \${commit.version}</span>
+          <span class="commit-author">\${commit.author}</span>
+          <span class="commit-date">\${commit.date}</span>
+      </div>
+      <div class="commit-subject">\${commit.subject}</div>
+      <div class="commit-actions">
+          <button class="view-btn" onclick="viewCommit('\${commit.hash}')">
+              👁️ View Details
+          </button>
+          \${index > 0 ? \`
+              <button class="restore-btn" onclick="restoreCommit('\${commit.hash}')">
+                  ⏮️ Restore
+              </button>
+          \` : ''}
+      </div>
+    \`;
+  }
+  
+  function setLoadingMore(isLoading) {
+    const loadMoreBtn = document.getElementById('loadMoreBtn');
+    const loadingMore = document.getElementById('loadingMore');
+    
+    if (loadMoreBtn && loadingMore) {
+      if (isLoading) {
+        loadMoreBtn.style.display = 'none';
+        loadingMore.style.display = 'flex';
+      } else {
+        loadMoreBtn.style.display = 'flex';
+        loadingMore.style.display = 'none';
+      }
+    }
+  }
+  
+  function updateLoadMoreVisibility(hasMore) {
+    const loadMoreContainer = document.getElementById('loadMoreContainer');
+    if (loadMoreContainer) {
+      loadMoreContainer.style.display = hasMore ? 'block' : 'none';
+    }
+  }
+  
+  function showErrorMessage(error) {
+    console.error('Progressive loading error:', error);
+    // Could add user-visible error handling here
+  }
+  
+  // Optional: Infinite scroll support
+  let isAutoLoading = false;
+  function setupInfiniteScroll() {
+    window.addEventListener('scroll', () => {
+      if (isAutoLoading) return;
+      
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const scrollHeight = document.documentElement.scrollHeight;
+      const clientHeight = window.innerHeight;
+      
+      // Load more when within 200px of bottom
+      if (scrollTop + clientHeight >= scrollHeight - 200) {
+        const loadMoreBtn = document.getElementById('loadMoreBtn');
+        if (loadMoreBtn && loadMoreBtn.style.display !== 'none') {
+          isAutoLoading = true;
+          loadMoreCommits();
+          // Reset after loading completes
+          setTimeout(() => { isAutoLoading = false; }, 1000);
+        }
+      }
+    });
+  }
+  
+  // Uncomment to enable infinite scroll
+  // setupInfiniteScroll();
+
+  // Listen for messages from the extension
+  window.addEventListener('message', event => {
+    const message = event.data;
+    switch (message.command) {
+      case 'showConfirmation':
+        showConfirmationModal(
+          message.title,
+          message.message,
+          message.files,
+          message.commitHash
+        );
+        break;
+      case 'showDiscardConfirmation':
+        showDiscardModal(
+          message.title,
+          message.message,
+          message.files
+        );
+        break;
+      case 'appendCommits':
+        appendCommits(message.commits);
+        updateLoadMoreVisibility(message.hasMore);
+        break;
+      case 'setLoadingMore':
+        setLoadingMore(message.isLoading);
+        break;
+      case 'showError':
+        showErrorMessage(message.error);
+        break;
+    }
+  });
   
   function saveChanges() {
     vscode.postMessage({ command: 'saveChanges' });
   }
   
   function discardChanges() {
-    vscode.postMessage({ command: 'discardChanges' });
+    vscode.postMessage({ command: 'requestDiscard' });
   }
   
   function copyToClipboard(text) {
@@ -543,25 +995,30 @@ const commonJavaScript = `
  * JavaScript for commit filtering
  */
 const filterJavaScript = `
-  const filterInput = document.getElementById('commitFilter');
-  const commitList = document.getElementById('commitList');
-  
-  if (filterInput && commitList) {
-    const commitItems = document.querySelectorAll('.commit-item');
+  function setupCommitFilter() {
+    const filterInput = document.getElementById('commitFilter');
+    const commitList = document.getElementById('commitList');
     
-    filterInput.addEventListener('input', () => {
-      const filterValue = filterInput.value.toLowerCase();
-      
-      commitItems.forEach(item => {
-        const commitText = item.textContent.toLowerCase();
-        if (commitText.includes(filterValue)) {
-          item.style.display = 'block';
-        } else {
-          item.style.display = 'none';
-        }
+    if (filterInput && commitList) {
+      filterInput.addEventListener('input', () => {
+        const filterValue = filterInput.value.toLowerCase();
+        // Query for commit items each time to include newly loaded ones
+        const commitItems = document.querySelectorAll('.commit-item');
+        
+        commitItems.forEach(item => {
+          const commitText = item.textContent.toLowerCase();
+          if (commitText.includes(filterValue)) {
+            item.style.display = 'block';
+          } else {
+            item.style.display = 'none';
+          }
+        });
       });
-    });
+    }
   }
+  
+  // Call setup on initial load
+  setupCommitFilter();
 `;
 
 /**
@@ -743,9 +1200,10 @@ function generateCommitListItem(commit, index) {
  * Generate sidebar webview content
  * @param {Array} commits Array of commit objects
  * @param {Object} uncommittedChanges Uncommitted changes information
+ * @param {Object} paginationInfo Pagination information
  * @returns {string} HTML content for sidebar
  */
-function getSidebarTemplate(commits, uncommittedChanges = null) {
+function getSidebarTemplate(commits, uncommittedChanges = null, paginationInfo = null) {
   const commitListHTML =
     commits.length === 0
       ? '<div class="no-commits">No commits found in this repository.</div>'
@@ -753,7 +1211,18 @@ function getSidebarTemplate(commits, uncommittedChanges = null) {
         ${commits
           .map((commit, index) => generateCommitListItem(commit, index))
           .join("")}
-       </ul>`;
+       </ul>
+       ${paginationInfo && paginationInfo.hasMore ? `
+         <div id="loadMoreContainer" class="load-more-container">
+           <button id="loadMoreBtn" class="load-more-btn" onclick="loadMoreCommits()">
+             📜 Load More Versions
+           </button>
+           <div id="loadingMore" class="loading-more" style="display: none;">
+             <div class="spinner-small"></div>
+             <span>Loading more versions...</span>
+           </div>
+         </div>
+       ` : ''}`;
 
   return `
     <!DOCTYPE html>
@@ -779,7 +1248,12 @@ function getSidebarTemplate(commits, uncommittedChanges = null) {
         <div class="header">
             <div>
                 <h1>📊 TimeLad</h1>
-                <p class="commit-count">${commits.length} versions</p>
+                <p class="commit-count">
+                  ${paginationInfo ? 
+                    `Showing ${paginationInfo.showingCount} of ${paginationInfo.totalCount} versions` : 
+                    `${commits.length} versions`
+                  }
+                </p>
             </div>
             <div class="header-buttons">
                 <!-- Refresh functionality now handled by VS Code's native refresh button -->
@@ -791,6 +1265,64 @@ function getSidebarTemplate(commits, uncommittedChanges = null) {
         ${generateUncommittedChangesSection(uncommittedChanges)}
         
         ${commitListHTML}
+
+        <!-- Restore Confirmation Modal -->
+        <div id="confirmationModal" class="modal-overlay">
+            <div class="modal">
+                <div class="modal-header">
+                    <span class="modal-icon">⚠️</span>
+                    <h2 id="modalTitle" class="modal-title">Confirm Restore</h2>
+                </div>
+                <div class="modal-content">
+                    <p id="modalMessage">You have uncommitted changes that will be permanently lost.</p>
+                    
+                    <div class="modal-warning">
+                        <strong>⚠️ Warning:</strong> This action cannot be undone. All uncommitted changes will be permanently lost.
+                    </div>
+                    
+                    <div class="modal-file-list" id="modalFilesList">
+                        <!-- Files will be populated dynamically -->
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button id="cancelRestoreBtn" class="modal-btn modal-btn-secondary" onclick="cancelRestore()">
+                        Cancel
+                    </button>
+                    <button id="confirmRestoreBtn" class="modal-btn modal-btn-danger" onclick="confirmRestore()">
+                        Discard Changes & Restore
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Discard Confirmation Modal -->
+        <div id="discardModal" class="modal-overlay">
+            <div class="modal">
+                <div class="modal-header">
+                    <span class="modal-icon">🗑️</span>
+                    <h2 class="modal-title">Confirm Discard Changes</h2>
+                </div>
+                <div class="modal-content">
+                    <p id="discardMessage">You are about to permanently discard all uncommitted changes.</p>
+                    
+                    <div class="modal-warning">
+                        <strong>🗑️ Warning:</strong> This action cannot be undone. All your uncommitted work will be permanently lost.
+                    </div>
+                    
+                    <div class="modal-file-list" id="discardFilesList">
+                        <!-- Files will be populated dynamically -->
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button id="cancelDiscardBtn" class="modal-btn modal-btn-secondary" onclick="cancelDiscard()">
+                        Cancel
+                    </button>
+                    <button id="confirmDiscardBtn" class="modal-btn modal-btn-danger" onclick="confirmDiscard()">
+                        Discard All Changes
+                    </button>
+                </div>
+            </div>
+        </div>
 
         <script>
             ${commonJavaScript}
@@ -916,6 +1448,64 @@ function getCommitHistoryTemplate(commits) {
         <input type="text" class="search-box" placeholder="🔍 Filter commits by message, author, or version..." id="commitFilter">
         
         ${commitListHTML}
+
+        <!-- Restore Confirmation Modal -->
+        <div id="confirmationModal" class="modal-overlay">
+            <div class="modal">
+                <div class="modal-header">
+                    <span class="modal-icon">⚠️</span>
+                    <h2 id="modalTitle" class="modal-title">Confirm Restore</h2>
+                </div>
+                <div class="modal-content">
+                    <p id="modalMessage">You have uncommitted changes that will be permanently lost.</p>
+                    
+                    <div class="modal-warning">
+                        <strong>⚠️ Warning:</strong> This action cannot be undone. All uncommitted changes will be permanently lost.
+                    </div>
+                    
+                    <div class="modal-file-list" id="modalFilesList">
+                        <!-- Files will be populated dynamically -->
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button id="cancelRestoreBtn" class="modal-btn modal-btn-secondary" onclick="cancelRestore()">
+                        Cancel
+                    </button>
+                    <button id="confirmRestoreBtn" class="modal-btn modal-btn-danger" onclick="confirmRestore()">
+                        Discard Changes & Restore
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Discard Confirmation Modal -->
+        <div id="discardModal" class="modal-overlay">
+            <div class="modal">
+                <div class="modal-header">
+                    <span class="modal-icon">🗑️</span>
+                    <h2 class="modal-title">Confirm Discard Changes</h2>
+                </div>
+                <div class="modal-content">
+                    <p id="discardMessage">You are about to permanently discard all uncommitted changes.</p>
+                    
+                    <div class="modal-warning">
+                        <strong>🗑️ Warning:</strong> This action cannot be undone. All your uncommitted work will be permanently lost.
+                    </div>
+                    
+                    <div class="modal-file-list" id="discardFilesList">
+                        <!-- Files will be populated dynamically -->
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button id="cancelDiscardBtn" class="modal-btn modal-btn-secondary" onclick="cancelDiscard()">
+                        Cancel
+                    </button>
+                    <button id="confirmDiscardBtn" class="modal-btn modal-btn-danger" onclick="confirmDiscard()">
+                        Discard All Changes
+                    </button>
+                </div>
+            </div>
+        </div>
 
         <script>
             ${commonJavaScript}
