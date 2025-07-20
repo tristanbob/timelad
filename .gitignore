@@ -3,3 +3,6 @@ node_modules
 *.vsix
 coverage/
 .nyc_output/
+# VS Code test artifacts
+UserstristGitHubtristanbobtimelad.vscode-test*
+.claude/
