@@ -1,8 +1,8 @@
 {
   "name": "timelad",
   "displayName": "TimeLad",
-  "description": "⚠️ PRE-RELEASE: A beginner-friendly Git time travel extension with safe version restoration and beautiful interactive history - USE ONLY FOR TESTING WITH DISPOSABLE DATA",
-  "version": "0.1.1",
+  "description": "A beginner-friendly Git time travel extension with safe version restoration and beautiful interactive history",
+  "version": "0.2.0",
   "publisher": "victrisai",
   "repository": {
     "type": "git",
