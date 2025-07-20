@@ -20,3 +20,8 @@ UNCOMMITTED_CHANGES_FEATURE.md
 SUBMISSION_SUMMARY.md
 node_modules/**
 *.vsix
+# Test artifacts and temporary files
+UserstristGitHubtristanbobtimelad.vscode-test*
+.claude/**
+src/tests/**
+.husky/**
