@@ -1,5 +1,7 @@
 const vscode = require("vscode");
 const GitService = require("../services/GitService");
+const NotificationService = require("../services/NotificationService");
+const FileOperationsService = require("../services/FileOperationsService");
 const {
   getLoadingTemplate,
   getSidebarTemplate,
@@ -7,7 +9,7 @@ const {
 const constants = require("../constants");
 
 /**
- * GitHistoryWebviewProvider manages the webview for the sidebar
+ * Refactored GitHistoryWebviewProvider with separated services
  */
 class GitHistoryWebviewProvider {
   constructor(context) {
@@ -15,11 +17,15 @@ class GitHistoryWebviewProvider {
     this.view = null;
     this.commits = [];
     this.uncommittedChanges = null;
-    this.gitService = new GitService();
-    this.repositoryWatcher = null;
-    this.isRestoring = false; // Flag to track if a restore is in progress
+    this.isRestoring = false;
 
-    // Setup workspace change listeners for faster repository detection
+    // Initialize services
+    this.notificationService = new NotificationService();
+    this.fileService = new FileOperationsService();
+    this.gitService = new GitService(this.notificationService, this.fileService);
+    
+    this.repositoryWatcher = null;
+
     this.setupWorkspaceListeners();
   }
 
@@ -27,31 +33,27 @@ class GitHistoryWebviewProvider {
    * Setup listeners for workspace changes to detect repositories faster
    */
   setupWorkspaceListeners() {
-    // Listen for workspace folder changes
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
-      if (this.isRestoring) return; // Skip during restore
+      if (this.isRestoring) return;
       
-      // Clear cache when workspace changes
       this.gitService.clearCache();
-      // Refresh view if visible
       if (this.view && this.view.visible) {
         this.refresh();
       }
     });
 
-    // Listen for file system changes that might indicate git repository changes
     const watcher = vscode.workspace.createFileSystemWatcher("**/.git/**");
 
     watcher.onDidCreate(() => {
-      if (this.isRestoring) return; // Skip during restore
+      if (this.isRestoring) return;
       this.gitService.clearCache();
       if (this.view && this.view.visible) {
-        setTimeout(() => this.refresh(), 500); // Small delay to let git finish
+        setTimeout(() => this.refresh(), 500);
       }
     });
 
     watcher.onDidDelete(() => {
-      if (this.isRestoring) return; // Skip during restore
+      if (this.isRestoring) return;
       this.gitService.clearCache();
       if (this.view && this.view.visible) {
         this.refresh();
@@ -62,12 +64,11 @@ class GitHistoryWebviewProvider {
   }
 
   /**
-   * Proactively scan for repositories (can be called during extension activation)
+   * Proactively scan for repositories
    * @returns {Promise<boolean>} True if repository found
    */
   async proactivelyScanForRepositories() {
     try {
-      // Do a quick scan to warm up the cache
       return await this.gitService.hasRepositoryRobust();
     } catch (error) {
       console.log(`TimeLad: Proactive scan failed: ${error.message}`);
@@ -83,36 +84,26 @@ class GitHistoryWebviewProvider {
       localResourceRoots: [this.context.extensionUri],
     };
 
-    // Start a proactive scan to detect repositories early
     this.proactivelyScanForRepositories().then((hasRepo) => {
-      // If we found a repo and the view is visible, refresh immediately
       if (hasRepo && webviewView.visible) {
         this.refresh();
       }
     });
 
-    // Load initial content
     await this.refresh();
 
-    // Refresh when the view becomes visible (user clicks on extension)
     webviewView.onDidChangeVisibility(() => {
       if (webviewView.visible) {
         this.refresh();
       }
     });
 
-    // Handle messages from the webview
     webviewView.webview.onDidReceiveMessage(async (message) => {
       try {
         await this.handleWebviewMessage(message);
       } catch (error) {
-        console.error(
-          `${constants.EXTENSION_NAME}: Error handling webview message:`,
-          error
-        );
-        vscode.window.showErrorMessage(
-          `${constants.EXTENSION_NAME}: ${error.message}`
-        );
+        console.error(`${constants.EXTENSION_NAME}: Error handling webview message:`, error);
+        await this.notificationService.showError(error.message);
       }
     });
   }
@@ -144,20 +135,17 @@ class GitHistoryWebviewProvider {
         break;
         
       case "loadFromGitHub":
-        // Execute the Load from GitHub command
-        vscode.commands.executeCommand("timelad.loadFromGitHub");
+        await this.notificationService.executeCommand("timelad.loadFromGitHub");
         break;
         
       case "openUrl":
         if (message.url) {
-          await vscode.env.openExternal(vscode.Uri.parse(message.url));
+          await this.notificationService.openExternalUrl(message.url);
         }
         break;
         
       default:
-        console.warn(
-          `${constants.EXTENSION_NAME}: Unknown webview message command: ${message.command}`
-        );
+        console.warn(`${constants.EXTENSION_NAME}: Unknown webview message command: ${message.command}`);
     }
   }
 
@@ -176,27 +164,6 @@ class GitHistoryWebviewProvider {
   }
 
   /**
-   * Show discard changes confirmation dialog
-   * @param {Array} files Array of files that will be discarded
-   * @param {Function} onConfirm Callback when user confirms discard
-   */
-  async showDiscardConfirmDialog(files, onConfirm) {
-    const fileList = files.slice(0, 5).map(file => `• ${file}`).join('\n');
-    const moreFiles = files.length > 5 ? `\n• ...and ${files.length - 5} more files` : '';
-    
-    const selection = await vscode.window.showWarningMessage(
-      `You have ${files.length} uncommitted change(s) that will be discarded:\n\n${fileList}${moreFiles}\n\nAre you sure you want to discard these changes?`,
-      { modal: true },
-      'Discard Changes',
-      'Cancel'
-    );
-
-    if (selection === 'Discard Changes') {
-      onConfirm();
-    }
-  }
-
-  /**
    * Check for unsaved changes in the workspace
    * @returns {Promise<boolean>} True if there are unsaved changes
    */
@@ -205,31 +172,6 @@ class GitHistoryWebviewProvider {
       doc => doc.isDirty && !doc.isUntitled
     );
     return unsavedDocuments.length > 0;
-  }
-
-  /**
-   * Show unsaved changes warning
-   * @returns {Promise<boolean>} True if user wants to proceed
-   */
-  async showUnsavedChangesWarning() {
-    const unsavedDocuments = vscode.workspace.textDocuments.filter(
-      doc => doc.isDirty && !doc.isUntitled
-    );
-    
-    const docList = unsavedDocuments.slice(0, 5).map(doc => `• ${doc.fileName.split('/').pop()}`).join('\n');
-    const moreDocs = unsavedDocuments.length > 5 ? `\n• ...and ${unsavedDocuments.length - 5} more files` : '';
-    
-    const choice = await vscode.window.showWarningMessage(
-      `You have ${unsavedDocuments.length} unsaved file(s):\n\n${docList}${moreDocs}\n\nPlease save or discard all changes before restoring a version.`,
-      { modal: true },
-      'Show Files',
-      'OK'
-    );
-
-    if (choice === 'Show Files') {
-      await vscode.commands.executeCommand('workbench.action.showAllEditors');
-    }
-    return false;
   }
 
   /**
@@ -244,209 +186,34 @@ class GitHistoryWebviewProvider {
 
     // Check for unsaved changes
     if (await this.hasUnsavedChanges()) {
-      await this.showUnsavedChangesWarning();
-      return;
-    }
-
-    // Check for unsaved changes in the workspace
-    const unsavedDocuments = vscode.workspace.textDocuments.filter(
-      doc => doc.isDirty && !doc.isUntitled
-    );
-
-    if (unsavedDocuments.length > 0) {
-      const docList = unsavedDocuments.slice(0, 5).map(doc => `• ${doc.fileName.split('/').pop()}`).join('\n');
-      const moreDocs = unsavedDocuments.length > 5 ? `\n• ...and ${unsavedDocuments.length - 5} more files` : '';
-      
-      const choice = await vscode.window.showWarningMessage(
-        `You have ${unsavedDocuments.length} unsaved file(s):\n\n${docList}${moreDocs}\n\nPlease save or discard all changes before restoring a version.`,
-        { modal: true },
-        'Show Files',
-        'OK'
+      const unsavedDocuments = vscode.workspace.textDocuments.filter(
+        doc => doc.isDirty && !doc.isUntitled
       );
-
-      if (choice === 'Show Files') {
-        vscode.commands.executeCommand('workbench.action.showAllEditors');
+      
+      const shouldProceed = await this.notificationService.showUnsavedFilesWarning(unsavedDocuments);
+      if (!shouldProceed) {
+        return;
       }
-      return;
     }
 
-    // Show loading spinner in the webview
-    const showLoading = () => {
-      if (!this.view) return '';
-      return `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <style>
-            body {
-              font-family: var(--vscode-font-family);
-              color: var(--vscode-foreground);
-              background-color: var(--vscode-editor-background);
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: center;
-              height: 100vh;
-              margin: 0;
-              padding: 20px;
-              box-sizing: border-box;
-              text-align: center;
-            }
-            .spinner {
-              width: 40px;
-              height: 40px;
-              border: 4px solid rgba(0, 0, 0, 0.1);
-              border-radius: 50%;
-              border-top-color: var(--vscode-button-background);
-              animation: spin 1s ease-in-out infinite;
-              margin-bottom: 16px;
-            }
-            .checkmark {
-              width: 40px;
-              height: 40px;
-              border-radius: 50%;
-              display: block;
-              stroke-width: 4;
-              stroke: var(--vscode-testing-iconPassed);
-              stroke-miterlimit: 10;
-              margin: 0 auto 16px;
-              box-shadow: inset 0 0 0 rgba(0, 0, 0, 0.1);
-            }
-            .checkmark__circle {
-              stroke-dasharray: 166;
-              stroke-dashoffset: 166;
-              stroke-width: 2;
-              stroke-miterlimit: 10;
-              stroke: var(--vscode-testing-iconPassed);
-              fill: none;
-              animation: stroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
-            }
-            .checkmark__check {
-              transform-origin: 50% 50%;
-              stroke-dasharray: 48;
-              stroke-dashoffset: 48;
-              animation: stroke 0.3s cubic-bezier(0.65, 0, 0.45, 1) 0.8s forwards;
-            }
-            @keyframes stroke {
-              100% { stroke-dashoffset: 0; }
-            }
-            @keyframes spin {
-              to { transform: rotate(360deg); }
-            }
-            .message {
-              margin-top: 16px;
-              color: var(--vscode-foreground);
-              font-size: 14px;
-            }
-            .success {
-              color: var(--vscode-testing-iconPassed);
-            }
-          </style>
-        </head>
-        <body>
-          <div class="spinner"></div>
-          <div class="message">Restoring version ${commit.version}...</div>
-        </body>
-        </html>
-      `;
-    };
-
-    // Show success message with checkmark
-    const showSuccess = () => {
-      if (!this.view) return '';
-      return `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <style>
-            body {
-              font-family: var(--vscode-font-family);
-              color: var(--vscode-foreground);
-              background-color: var(--vscode-editor-background);
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: center;
-              height: 100vh;
-              margin: 0;
-              padding: 20px;
-              box-sizing: border-box;
-              text-align: center;
-            }
-            .checkmark {
-              width: 56px;
-              height: 56px;
-              border-radius: 50%;
-              display: block;
-              stroke-width: 4;
-              stroke: var(--vscode-testing-iconPassed);
-              stroke-miterlimit: 10;
-              margin: 0 auto 20px;
-              box-shadow: inset 0 0 0 rgba(0, 0, 0, 0.1);
-            }
-            .checkmark__circle {
-              stroke-dasharray: 166;
-              stroke-dashoffset: 166;
-              stroke-width: 2;
-              stroke-miterlimit: 10;
-              stroke: var(--vscode-testing-iconPassed);
-              fill: none;
-              animation: stroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
-            }
-            .checkmark__check {
-              transform-origin: 50% 50%;
-              stroke-dasharray: 48;
-              stroke-dashoffset: 48;
-              animation: stroke 0.3s cubic-bezier(0.65, 0, 0.45, 1) 0.8s forwards;
-            }
-            @keyframes stroke {
-              100% { stroke-dashoffset: 0; }
-            }
-            .message {
-              margin-top: 16px;
-              color: var(--vscode-foreground);
-              font-size: 16px;
-            }
-            .success {
-              color: var(--vscode-testing-iconPassed);
-              font-weight: 500;
-            }
-          </style>
-        </head>
-        <body>
-          <svg class="checkmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
-            <circle class="checkmark__circle" cx="26" cy="26" r="25" fill="none"/>
-            <path class="checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
-          </svg>
-          <div class="message success">Restore complete!</div>
-        </body>
-        </html>
-      `;
-    };
-
-    // Initial loading state
+    // Show loading spinner
     if (this.view) {
-      this.view.webview.html = showLoading();
+      this.view.webview.html = this.getLoadingTemplate(`Restoring version ${commit.version}...`);
     }
 
-    // Set restoring flag to prevent multiple refreshes
     this.isRestoring = true;
-    const statusBar = vscode.window.setStatusBarMessage(constants.MESSAGES.RESTORING_VERSION);
+    const statusBar = this.notificationService.setStatusBarMessage(constants.MESSAGES.RESTORING_VERSION);
 
     try {
-      // Perform the actual restore
       await this.gitService.restoreVersion(commit);
       
       // Show success message
       if (this.view) {
-        this.view.webview.html = showSuccess();
-        // Wait for 1 second before updating the view
+        this.view.webview.html = this.getSuccessTemplate("Restore complete!");
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
       
-      // Update commits list without full refresh to prevent flickering
+      // Update commits list
       if (this.view) {
         const commits = await this.gitService.getCommits();
         this.commits = commits;
@@ -455,13 +222,11 @@ class GitHistoryWebviewProvider {
       
       statusBar.dispose();
     } catch (error) {
-      // If there's an error, do a full refresh to ensure consistent state
       if (this.view) {
         await this.refresh();
       }
       throw new Error(`Failed to restore version: ${error.message}`);
     } finally {
-      // Always clear the restoring flag, even if there was an error
       this.isRestoring = false;
     }
   }
@@ -472,9 +237,7 @@ class GitHistoryWebviewProvider {
    * @param {string} commitDetails Detailed commit information
    */
   async createCommitDetailsPanel(commit, commitDetails) {
-    const {
-      getCommitDetailsTemplate,
-    } = require("../views/templates/webviewTemplates");
+    const { getCommitDetailsTemplate } = require("../views/templates/webviewTemplates");
 
     const panel = vscode.window.createWebviewPanel(
       constants.COMMIT_DETAILS_VIEW_ID,
@@ -497,24 +260,29 @@ class GitHistoryWebviewProvider {
       const uncommittedChanges = await this.gitService.getUncommittedChanges();
       
       if (!uncommittedChanges || !uncommittedChanges.files || uncommittedChanges.files.length === 0) {
-        vscode.window.showInformationMessage('No uncommitted changes to discard');
+        await this.notificationService.showInfo('No uncommitted changes to discard');
         return;
       }
 
-      await this.showDiscardConfirmDialog(
-        uncommittedChanges.files.map(f => f.path),
-        async () => {
-          try {
-            await this.gitService.discardChanges();
-            vscode.window.showInformationMessage('All changes have been discarded');
-            await this.refresh();
-          } catch (error) {
-            vscode.window.showErrorMessage(`Failed to discard changes: ${error.message}`);
-          }
-        }
+      const fileNames = uncommittedChanges.files.map(f => f.fileName);
+      const shouldDiscard = await this.notificationService.showDestructiveConfirmation(
+        'You have uncommitted changes that will be discarded:',
+        fileNames,
+        'Discard Changes',
+        'Cancel'
       );
+
+      if (shouldDiscard) {
+        try {
+          await this.gitService.discardChanges();
+          await this.notificationService.showInfo('All changes have been discarded');
+          await this.refresh();
+        } catch (error) {
+          await this.notificationService.showError(`Failed to discard changes: ${error.message}`);
+        }
+      }
     } catch (error) {
-      vscode.window.showErrorMessage(`Error preparing to discard changes: ${error.message}`);
+      await this.notificationService.showError(`Error preparing to discard changes: ${error.message}`);
     }
   }
 
@@ -522,196 +290,31 @@ class GitHistoryWebviewProvider {
    * Save uncommitted changes
    */
   async saveChanges(options = {}) {
-    // If this is a discard action, handle it separately
     if (options.discard) {
       await this.discardChanges();
       return;
     }
 
-    // Show loading spinner in the webview
-    const showLoading = () => {
-      if (!this.view) return '';
-      return `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <style>
-            body {
-              font-family: var(--vscode-font-family);
-              color: var(--vscode-foreground);
-              background-color: var(--vscode-editor-background);
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: center;
-              height: 100vh;
-              margin: 0;
-              padding: 20px;
-              box-sizing: border-box;
-              text-align: center;
-            }
-            .spinner {
-              width: 40px;
-              height: 40px;
-              border: 4px solid rgba(0, 0, 0, 0.1);
-              border-radius: 50%;
-              border-top-color: var(--vscode-button-background);
-              animation: spin 1s ease-in-out infinite;
-              margin-bottom: 16px;
-            }
-            .checkmark {
-              width: 40px;
-              height: 40px;
-              border-radius: 50%;
-              display: block;
-              stroke-width: 4;
-              stroke: var(--vscode-testing-iconPassed);
-              stroke-miterlimit: 10;
-              margin: 0 auto 16px;
-              box-shadow: inset 0 0 0 rgba(0, 0, 0, 0.1);
-            }
-            .checkmark__circle {
-              stroke-dasharray: 166;
-              stroke-dashoffset: 166;
-              stroke-width: 2;
-              stroke-miterlimit: 10;
-              stroke: var(--vscode-testing-iconPassed);
-              fill: none;
-              animation: stroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
-            }
-            .checkmark__check {
-              transform-origin: 50% 50%;
-              stroke-dasharray: 48;
-              stroke-dashoffset: 48;
-              animation: stroke 0.3s cubic-bezier(0.65, 0, 0.45, 1) 0.8s forwards;
-            }
-            @keyframes stroke {
-              100% { stroke-dashoffset: 0; }
-            }
-            @keyframes spin {
-              to { transform: rotate(360deg); }
-            }
-            .message {
-              margin-top: 16px;
-              color: var(--vscode-foreground);
-              font-size: 14px;
-            }
-            .success {
-              color: var(--vscode-testing-iconPassed);
-            }
-          </style>
-        </head>
-        <body>
-          <div class="spinner"></div>
-          <div class="message">Saving changes...</div>
-        </body>
-        </html>
-      `;
-    };
-
-    // Show success message with checkmark
-    const showSuccess = (commitMessage) => {
-      if (!this.view) return '';
-      return `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <style>
-            body {
-              font-family: var(--vscode-font-family);
-              color: var(--vscode-foreground);
-              background-color: var(--vscode-editor-background);
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: center;
-              height: 100vh;
-              margin: 0;
-              padding: 20px;
-              box-sizing: border-box;
-              text-align: center;
-            }
-            .checkmark {
-              width: 56px;
-              height: 56px;
-              border-radius: 50%;
-              display: block;
-              stroke-width: 4;
-              stroke: var(--vscode-testing-iconPassed);
-              stroke-miterlimit: 10;
-              margin: 0 auto 20px;
-              box-shadow: inset 0 0 0 rgba(0, 0, 0, 0.1);
-            }
-            .checkmark__circle {
-              stroke-dasharray: 166;
-              stroke-dashoffset: 166;
-              stroke-width: 2;
-              stroke-miterlimit: 10;
-              stroke: var(--vscode-testing-iconPassed);
-              fill: none;
-              animation: stroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
-            }
-            .checkmark__check {
-              transform-origin: 50% 50%;
-              stroke-dasharray: 48;
-              stroke-dashoffset: 48;
-              animation: stroke 0.3s cubic-bezier(0.65, 0, 0.45, 1) 0.8s forwards;
-            }
-            @keyframes stroke {
-              100% { stroke-dashoffset: 0; }
-            }
-            .message {
-              margin-top: 16px;
-              color: var(--vscode-foreground);
-              font-size: 16px;
-              max-width: 300px;
-              word-wrap: break-word;
-            }
-            .commit-message {
-              margin-top: 8px;
-              font-style: italic;
-              color: var(--vscode-descriptionForeground);
-              max-width: 280px;
-              word-wrap: break-word;
-            }
-            .success {
-              color: var(--vscode-testing-iconPassed);
-            }
-          </style>
-        </head>
-        <body>
-          <svg class="checkmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
-            <circle class="checkmark__circle" cx="26" cy="26" r="25" fill="none"/>
-            <path class="checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
-          </svg>
-          <div class="message success">Changes saved!</div>
-          <div class="commit-message">"${commitMessage.replace(/"/g, '&quot;')}"</div>
-        </body>
-        </html>
-      `;
-    };
+    // Show loading spinner
+    if (this.view) {
+      this.view.webview.html = this.getLoadingTemplate("Saving changes...");
+    }
 
     try {
-      // Show loading spinner
-      if (this.view) {
-        this.view.webview.html = showLoading();
-      }
-
-      // Save changes
       const commitMessage = await this.gitService.saveChanges();
 
       // Show success message
       if (this.view) {
-        this.view.webview.html = showSuccess(commitMessage);
+        this.view.webview.html = this.getSuccessTemplate(
+          "Changes saved!",
+          `"${commitMessage}"`
+        );
         
-        // After 2 seconds, refresh the view
         setTimeout(async () => {
           await this.refresh();
         }, 3000);
       } else {
-        vscode.window.showInformationMessage(
+        await this.notificationService.showInfo(
           `${constants.MESSAGES.CHANGES_SAVED}\nCommit: "${commitMessage}"`
         );
         await this.refresh();
@@ -722,11 +325,9 @@ class GitHistoryWebviewProvider {
       }
       
       if (error.message === constants.MESSAGES.NO_UNCOMMITTED_CHANGES) {
-        vscode.window.showInformationMessage(error.message);
+        await this.notificationService.showInfo(error.message);
       } else {
-        vscode.window.showErrorMessage(
-          `${constants.EXTENSION_NAME}: Failed to save changes: ${error.message}`
-        );
+        await this.notificationService.showError(`Failed to save changes: ${error.message}`);
       }
     }
   }
@@ -736,24 +337,17 @@ class GitHistoryWebviewProvider {
    */
   async createRepository() {
     try {
-      // Show loading state while creating repository
       this.view.webview.html = getLoadingTemplate();
 
-      // Create the repository
       const result = await this.gitService.createNewRepository();
 
       if (result === null) {
-        // User cancelled or chose to load from GitHub
-        // Just refresh to show the original state
         await this.refresh();
         return;
       }
 
-      // Refresh the view to show the new repository
       await this.refresh();
     } catch (error) {
-      // Error is already handled in createNewRepository
-      // Refresh to show the error state or original content
       await this.refresh();
     }
   }
@@ -766,33 +360,25 @@ class GitHistoryWebviewProvider {
       return;
     }
 
-    // Clear cache on manual refresh
     this.gitService.clearCache();
-
-    // Show scanning state (similar to VS Code Source Control)
     this.view.webview.html = this.getScanningTemplate();
 
     try {
-      // First check if git is installed
       const gitInstalled = await this.gitService.isGitInstalled();
 
       if (!gitInstalled) {
-        // Show git installation message and return
-        await this.gitService.showGitNotInstalledMessage();
+        await this.notificationService.showGitNotInstalledMessage();
         this.view.webview.html = this.getGitNotInstalledTemplate();
         return;
       }
 
-      // Check if repository exists using enhanced scanning
       const hasRepo = await this.gitService.hasRepositoryRobust();
 
       if (!hasRepo) {
-        // Show the repository setup UI
         this.view.webview.html = this.getNoRepositoryTemplate();
         return;
       }
 
-      // Fetch commits and uncommitted changes
       const [commits, uncommittedChanges] = await Promise.all([
         this.gitService.getCommits(constants.MAX_COMMITS_SIDEBAR),
         this.gitService.getUncommittedChanges(),
@@ -801,66 +387,204 @@ class GitHistoryWebviewProvider {
       this.commits = commits;
       this.uncommittedChanges = uncommittedChanges;
 
-      // Update webview with commit data and uncommitted changes
-      this.view.webview.html = getSidebarTemplate(
-        this.commits,
-        this.uncommittedChanges
-      );
+      this.view.webview.html = getSidebarTemplate(this.commits, this.uncommittedChanges);
     } catch (error) {
-      console.error(
-        `${constants.EXTENSION_NAME}: Error refreshing commits:`,
-        error
-      );
+      console.error(`${constants.EXTENSION_NAME}: Error refreshing commits:`, error);
 
-      // Show error state
-      this.view.webview.html = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <style>
-                body {
-                    font-family: var(--vscode-font-family);
-                    color: var(--vscode-foreground);
-                    background-color: var(--vscode-editor-background);
-                    padding: 20px;
-                    text-align: center;
-                }
-                .error {
-                    color: var(--vscode-errorForeground);
-                    background-color: var(--vscode-inputValidation-errorBackground);
-                    border: 1px solid var(--vscode-inputValidation-errorBorder);
-                    padding: 15px;
-                    border-radius: 4px;
-                    margin: 20px 0;
-                }
-                .retry-btn {
-                    background: var(--vscode-button-background);
-                    color: var(--vscode-button-foreground);
-                    border: none;
-                    border-radius: 4px;
-                    padding: 8px 16px;
-                    cursor: pointer;
-                    margin-top: 10px;
-                }
-            </style>
-        </head>
-        <body>
-                            <h2>⚠️ Error Loading History</h2>
-            <div class="error">
-                ${error.message}
-            </div>
-            <button class="retry-btn" onclick="refreshHistory()">🔄 Try Again</button>
-            <script>
-                const vscode = acquireVsCodeApi();
-                function refreshHistory() {
-                    vscode.postMessage({ command: 'refresh' });
-                }
-            </script>
-        </body>
-        </html>
-      `;
+      this.view.webview.html = this.getErrorTemplate(error.message);
     }
+  }
+
+  /**
+   * Get loading template
+   * @param {string} message Loading message
+   * @returns {string} HTML template
+   */
+  getLoadingTemplate(message = "Loading...") {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          body {
+            font-family: var(--vscode-font-family);
+            color: var(--vscode-foreground);
+            background-color: var(--vscode-editor-background);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+            text-align: center;
+          }
+          .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top-color: var(--vscode-button-background);
+            animation: spin 1s ease-in-out infinite;
+            margin-bottom: 16px;
+          }
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+          .message {
+            margin-top: 16px;
+            color: var(--vscode-foreground);
+            font-size: 14px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="spinner"></div>
+        <div class="message">${message}</div>
+      </body>
+      </html>
+    `;
+  }
+
+  /**
+   * Get success template
+   * @param {string} title Success title
+   * @param {string} subtitle Optional subtitle
+   * @returns {string} HTML template
+   */
+  getSuccessTemplate(title, subtitle = "") {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          body {
+            font-family: var(--vscode-font-family);
+            color: var(--vscode-foreground);
+            background-color: var(--vscode-editor-background);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+            text-align: center;
+          }
+          .checkmark {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            display: block;
+            stroke-width: 4;
+            stroke: var(--vscode-testing-iconPassed);
+            stroke-miterlimit: 10;
+            margin: 0 auto 20px;
+            box-shadow: inset 0 0 0 rgba(0, 0, 0, 0.1);
+          }
+          .checkmark__circle {
+            stroke-dasharray: 166;
+            stroke-dashoffset: 166;
+            stroke-width: 2;
+            stroke-miterlimit: 10;
+            stroke: var(--vscode-testing-iconPassed);
+            fill: none;
+            animation: stroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+          }
+          .checkmark__check {
+            transform-origin: 50% 50%;
+            stroke-dasharray: 48;
+            stroke-dashoffset: 48;
+            animation: stroke 0.3s cubic-bezier(0.65, 0, 0.45, 1) 0.8s forwards;
+          }
+          @keyframes stroke {
+            100% { stroke-dashoffset: 0; }
+          }
+          .message {
+            margin-top: 16px;
+            color: var(--vscode-foreground);
+            font-size: 16px;
+          }
+          .subtitle {
+            margin-top: 8px;
+            font-style: italic;
+            color: var(--vscode-descriptionForeground);
+            max-width: 280px;
+            word-wrap: break-word;
+          }
+          .success {
+            color: var(--vscode-testing-iconPassed);
+            font-weight: 500;
+          }
+        </style>
+      </head>
+      <body>
+        <svg class="checkmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
+          <circle class="checkmark__circle" cx="26" cy="26" r="25" fill="none"/>
+          <path class="checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
+        </svg>
+        <div class="message success">${title}</div>
+        ${subtitle ? `<div class="subtitle">${subtitle}</div>` : ''}
+      </body>
+      </html>
+    `;
+  }
+
+  /**
+   * Get error template
+   * @param {string} errorMessage Error message
+   * @returns {string} HTML template
+   */
+  getErrorTemplate(errorMessage) {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          body {
+            font-family: var(--vscode-font-family);
+            color: var(--vscode-foreground);
+            background-color: var(--vscode-editor-background);
+            padding: 20px;
+            text-align: center;
+          }
+          .error {
+            color: var(--vscode-errorForeground);
+            background-color: var(--vscode-inputValidation-errorBackground);
+            border: 1px solid var(--vscode-inputValidation-errorBorder);
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+          }
+          .retry-btn {
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            border-radius: 4px;
+            padding: 8px 16px;
+            cursor: pointer;
+            margin-top: 10px;
+          }
+        </style>
+      </head>
+      <body>
+        <h2>⚠️ Error Loading History</h2>
+        <div class="error">${errorMessage}</div>
+        <button class="retry-btn" onclick="refreshHistory()">🔄 Try Again</button>
+        <script>
+          const vscode = acquireVsCodeApi();
+          function refreshHistory() {
+            vscode.postMessage({ command: 'refresh' });
+          }
+        </script>
+      </body>
+      </html>
+    `;
   }
 
   /**
@@ -913,26 +637,6 @@ class GitHistoryWebviewProvider {
                   margin-bottom: 25px;
                   font-size: 0.95em;
               }
-              .install-steps {
-                  text-align: left;
-                  margin: 20px 0;
-                  background-color: var(--vscode-editor-background);
-                  padding: 15px;
-                  border-radius: 4px;
-                  border: 1px solid var(--vscode-panel-border);
-              }
-              .install-steps h4 {
-                  margin: 0 0 10px 0;
-                  color: var(--vscode-terminal-ansiBlue);
-              }
-              .install-steps ul {
-                  margin: 0;
-                  padding-left: 20px;
-              }
-              .install-steps li {
-                  margin-bottom: 5px;
-                  font-size: 0.9em;
-              }
               .action-btn {
                   background: var(--vscode-button-background);
                   color: var(--vscode-button-foreground);
@@ -948,15 +652,6 @@ class GitHistoryWebviewProvider {
               .action-btn:hover {
                   background: var(--vscode-button-hoverBackground);
               }
-              .refresh-note {
-                  margin-top: 20px;
-                  padding: 10px;
-                  background-color: var(--vscode-textBlockQuote-background);
-                  border-left: 3px solid var(--vscode-terminal-ansiYellow);
-                  border-radius: 3px;
-                  font-size: 0.85em;
-                  text-align: left;
-              }
           </style>
       </head>
       <body>
@@ -967,22 +662,9 @@ class GitHistoryWebviewProvider {
                   TimeLad needs Git to track your project's history, but Git isn't installed on your system.
               </p>
               
-              <div class="install-steps">
-                  <h4>📦 Installation Steps:</h4>
-                  <ul>
-                      <li><strong>Windows:</strong> Download from git-scm.com</li>
-                      <li><strong>Mac:</strong> Install Xcode Command Line Tools</li>
-                      <li><strong>Linux:</strong> Use your package manager</li>
-                  </ul>
-              </div>
-              
               <button class="action-btn" onclick="openGitWebsite()">
                   🌐 Download Git
               </button>
-              
-              <div class="refresh-note">
-                  <strong>💡 After installing:</strong> Please restart VS Code, then refresh this view.
-              </div>
           </div>
           
           <script>
@@ -1040,22 +722,6 @@ class GitHistoryWebviewProvider {
                   margin: 0 0 12px 0;
                   font-weight: 600;
               }
-              .welcome-description {
-                  color: var(--vscode-descriptionForeground);
-                  line-height: 1.5;
-                  margin-bottom: 20px;
-                  font-size: 0.9em;
-              }
-              .benefits-list {
-                  text-align: left;
-                  margin: 15px 0;
-                  color: var(--vscode-editor-foreground);
-                  font-size: 0.85em;
-              }
-              .benefits-list li {
-                  margin-bottom: 6px;
-                  padding-left: 3px;
-              }
               .setup-btn {
                   background: var(--vscode-button-background);
                   color: var(--vscode-button-foreground);
@@ -1073,59 +739,24 @@ class GitHistoryWebviewProvider {
                   background: var(--vscode-button-hoverBackground);
                   transform: translateY(-1px);
               }
-              .setup-btn.secondary {
-                  background: var(--vscode-button-secondaryBackground);
-                  color: var(--vscode-button-secondaryForeground);
-                  border: 1px solid var(--vscode-button-border);
-              }
-              .setup-btn.secondary:hover {
-                  background: var(--vscode-button-secondaryHoverBackground);
-              }
-              .analogy {
-                  background-color: var(--vscode-textBlockQuote-background);
-                  border-left: 3px solid var(--vscode-terminal-ansiBlue);
-                  padding: 12px;
-                  margin: 15px 0;
-                  border-radius: 3px;
-                  font-style: italic;
-                  color: var(--vscode-editor-foreground);
-                  font-size: 0.85em;
-              }
           </style>
       </head>
       <body>
           <div class="welcome-container">
               <div class="welcome-icon">🚀</div>
               <h1 class="welcome-title">Welcome to TimeLad!</h1>
-              <p class="welcome-description">
-                  This folder isn't set up for tracking your work history yet. Would you like TimeLad to set up version tracking?
-              </p>
-              
-              <div class="analogy">
-                  💡 Think of it like having an automatic "Save Game" feature for your code!
-              </div>
-              
-              <p class="welcome-description" style="font-weight: 500; margin-bottom: 8px;">
-                  Version tracking will help you:
-              </p>
-              
-              <ul class="benefits-list">
-                  <li>🛡️ Keep track of all your changes</li>
-                  <li>⏰ Go back to previous versions if something goes wrong</li>
-                  <li>📈 See the timeline of your work</li>
-                  <li>🎯 Never lose your progress again</li>
-              </ul>
+              <p>This folder isn't set up for tracking your work history yet. Would you like TimeLad to set up version tracking?</p>
               
               <div style="margin-top: 25px;">
                   <button class="setup-btn" onclick="setupVersionTracking()">
                       ✨ Set Up Version Tracking
                   </button>
                   <br>
-                  <button class="setup-btn" onclick="loadFromGitHub()" style="background: var(--vscode-terminal-ansiBlue); margin-top: 8px;">
+                  <button class="setup-btn" onclick="loadFromGitHub()">
                       📥 Load from GitHub
                   </button>
                   <br>
-                  <button class="setup-btn secondary" onclick="refreshView()">
+                  <button class="setup-btn" onclick="refreshView()">
                       🔄 Check Again
                   </button>
               </div>
@@ -1135,21 +766,15 @@ class GitHistoryWebviewProvider {
               const vscode = acquireVsCodeApi();
 
               function setupVersionTracking() {
-                  vscode.postMessage({
-                      command: 'createRepository'
-                  });
+                  vscode.postMessage({ command: 'createRepository' });
               }
 
               function loadFromGitHub() {
-                  vscode.postMessage({
-                      command: 'loadFromGitHub'
-                  });
+                  vscode.postMessage({ command: 'loadFromGitHub' });
               }
 
               function refreshView() {
-                  vscode.postMessage({
-                      command: 'refresh'
-                  });
+                  vscode.postMessage({ command: 'refresh' });
               }
           </script>
       </body>
@@ -1158,7 +783,7 @@ class GitHistoryWebviewProvider {
   }
 
   /**
-   * Get template for the scanning state (similar to VS Code Source Control)
+   * Get template for the scanning state
    * @returns {string} HTML template
    */
   getScanningTemplate() {

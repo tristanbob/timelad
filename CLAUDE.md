@@ -25,17 +25,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Core Components
 
 **GitService** (`src/services/GitService.js`)
-- Primary service for all Git operations
+- Primary service for all Git operations with dependency injection architecture
 - Handles repository detection, commit history, and version restoration
 - Implements robust repository scanning with multi-layer detection
 - Manages caching for performance optimization
-- Provides AI-powered commit message generation
+- Takes injected NotificationService and FileOperationsService dependencies
 
 **GitHistoryWebviewProvider** (`src/providers/GitHistoryWebviewProvider.js`)
-- Manages the sidebar webview UI
+- Manages the sidebar webview UI with separated service dependencies
 - Handles user interactions (restore, save, discard)
-- Coordinates between GitService and the webview
+- Coordinates between injected services and the webview
 - Implements loading states and error handling
+
+**GitCommands** (`src/commands/gitCommands.js`)
+- Refactored command handler with dependency injection
+- Initializes and coordinates all service dependencies
+- Provides clean API for extension commands
+
+**Service Layer Architecture:**
+- **NotificationService** (`src/services/NotificationService.js`) - VS Code user notifications
+- **FileOperationsService** (`src/services/FileOperationsService.js`) - File system operations
+- **AICommitMessageService** (`src/services/AICommitMessageService.js`) - AI-powered commit messages
+- **GitHubService** (`src/services/GitHubService.js`) - GitHub API integration
 
 **Extension Entry Point** (`src/extension.js`)
 - VS Code extension activation and command registration
@@ -76,8 +87,35 @@ The sidebar uses a single webview with dynamic content switching:
 
 - **Unit Tests**: Mock VS Code APIs, test individual functions in isolation
 - **Integration Tests**: Run within VS Code environment to test end-to-end flows
+- **Service Testing**: Isolated tests for each service with dependency injection
 - **Comprehensive Mocking**: Custom TestUtils class provides consistent mocking patterns
 - **Coverage Requirements**: 70% statements, 60% branches minimum
+
+### Dependency Injection Architecture
+
+The refactored codebase uses dependency injection for better testability and maintainability:
+
+**Pattern**: Services are injected into constructors rather than imported directly
+```javascript
+// GitService constructor takes dependencies
+constructor(notificationService, fileOperationsService) {
+  this.notificationService = notificationService;
+  this.fileService = fileOperationsService;
+}
+
+// GitCommands creates and injects services
+constructor() {
+  this.notificationService = new NotificationService();
+  this.fileService = new FileOperationsService();
+  this.gitService = new GitService(this.notificationService, this.fileService);
+}
+```
+
+**Benefits**:
+- Each service can be tested in isolation
+- Easy to mock dependencies in tests
+- Clear separation of concerns
+- Improved code reusability
 
 ## Development Notes
 
@@ -85,6 +123,7 @@ The sidebar uses a single webview with dynamic content switching:
 - `src/constants.js` - All extension constants and configuration
 - `src/views/templates/webviewTemplates.js` - HTML templates for webview UI
 - `src/tests/testUtils.js` - Comprehensive testing utilities and mocks
+- `src/tests/refactored-services.test.js` - Tests for new service architecture
 
 ### VS Code Integration
 - Extension contributes sidebar view and commands
