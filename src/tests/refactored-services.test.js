@@ -110,17 +110,19 @@ describe('Refactored Services', () => {
     });
 
     it('should show info message', async () => {
-      const result = await notificationService.showInfo('Test message');
+      // Test that the method exists and can be called without throwing
+      assert.ok(typeof notificationService.showInfo === 'function');
       
-      // Basic functionality test - service should not throw
-      assert.ok(typeof result !== 'undefined');
+      // Call should not throw (even if VS Code API returns undefined in test environment)
+      await notificationService.showInfo('Test message');
     });
 
     it('should show error message with extension name prefix', async () => {
-      const result = await notificationService.showError('Test error');
+      // Test that the method exists and can be called without throwing
+      assert.ok(typeof notificationService.showError === 'function');
       
-      // Basic functionality test - service should not throw
-      assert.ok(typeof result !== 'undefined');
+      // Call should not throw (even if VS Code API returns undefined in test environment)
+      await notificationService.showError('Test error');
     });
 
     it('should show repository creation options', async () => {

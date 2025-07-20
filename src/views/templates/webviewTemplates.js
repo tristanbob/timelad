@@ -716,7 +716,7 @@ function generateCommitListItem(commit, index) {
         <div>
             <span class="commit-version" data-hash="${
               commit.hash
-            }" title="Click to copy git hash">v${commit.version}</span>
+            }" title="Click to copy git hash">Version ${commit.version}</span>
             <span class="commit-author">${commit.author}</span>
             <span class="commit-date">${commit.date}</span>
         </div>
