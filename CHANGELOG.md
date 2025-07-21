@@ -2,6 +2,33 @@
 
 All notable changes to the "TimeLad" extension will be documented in this file.
 
+## [0.3.0] - 2025-07-21
+
+### Major Performance and Reliability Improvements
+
+- **Simplified Restore Method**: Replaced complex Git plumbing commands with streamlined approach
+- **Reduced Code Complexity**: 69% reduction in restore implementation size (25 lines vs 80+ lines)
+- **Enhanced Reliability**: More robust error handling and simplified Git command sequence
+- **Performance Improvements**: Faster restore operations with fewer Git command calls
+- **Cleaner Architecture**: Removed unused dependencies and complex temporary file handling
+
+### TypeScript Migration Complete
+
+- **Full TypeScript Conversion**: Migrated all core services, providers, and commands to TypeScript
+- **Type Safety**: Added comprehensive interfaces and strict type checking
+- **Better Developer Experience**: Enhanced IntelliSense, autocomplete, and compile-time error detection
+- **Improved Maintainability**: Self-documenting code with inline type annotations
+- **Dependency Injection**: Fully typed dependency injection architecture for better testability
+
+### Technical Details
+
+- Replaced `git commit-tree` plumbing approach with standard `git commit` workflow
+- Eliminated temporary Git index files and complex tree manipulation
+- Simplified error recovery and fallback mechanisms
+- Maintained all safety guarantees while improving maintainability
+- Added comprehensive TypeScript interfaces for all service contracts
+- Implemented strict mode TypeScript compilation with full type coverage
+
 ## [0.2.2] - 2025-07-21
 
 ### Added

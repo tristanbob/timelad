@@ -103,10 +103,6 @@ export declare class FileOperationsService implements FileOperationsServiceInter
      */
     createTempCommitFile(repoPath: string, message: string): Promise<string>;
     /**
-     * Create a temporary index file
-     */
-    createTempIndexFile(repoPath: string): string;
-    /**
      * Join path segments safely
      */
     joinPath(...segments: string[]): string;

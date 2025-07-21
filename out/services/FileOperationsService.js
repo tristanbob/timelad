@@ -304,13 +304,6 @@ class FileOperationsService {
         return tempFile;
     }
     /**
-     * Create a temporary index file
-     */
-    createTempIndexFile(repoPath) {
-        const gitDir = path.join(repoPath, '.git');
-        return this.createTempFilePath(gitDir, 'index', '');
-    }
-    /**
      * Join path segments safely
      */
     joinPath(...segments) {

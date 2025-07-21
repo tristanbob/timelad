@@ -195,12 +195,18 @@ declare class GitService implements GitServiceInterface {
      */
     cleanupOldBackups(repoPath: string, daysToKeep?: number): Promise<void>;
     /**
-     * Create a new commit that restores the working directory to a specific commit
+     * Create a new commit that restores the working directory to a specific commit (SIMPLIFIED VERSION)
      * @param commitHash Commit hash to restore
      * @param repoPath Repository path
      * @returns The new commit hash
      */
-    createRestoreCommit(commitHash: string, repoPath: string): Promise<string>;
+    createRestoreCommitSimple(commitHash: string, repoPath: string): Promise<string>;
+    /**
+     * Create a new commit that restores the working directory to a specific commit (COMPLEX/ORIGINAL VERSION - FALLBACK)
+     * @param commitHash Commit hash to restore
+     * @param repoPath Repository path
+     * @returns The new commit hash
+     */
     /**
      * Get uncommitted changes status
      * @param repoPath Repository path
@@ -214,7 +220,15 @@ declare class GitService implements GitServiceInterface {
      */
     parseFileStatus(status: string): string;
     /**
-     * Restore a specific version by creating a new commit
+     * Restore a specific version by creating a new commit (SIMPLIFIED VERSION)
+     * @param commit Commit object to restore
+     * @param repoPath Repository path
+     * @param skipConfirmation Skip uncommitted changes confirmation
+     * @returns Result of the operation
+     */
+    restoreVersionSimple(commit: CommitData, repoPath?: string | null, skipConfirmation?: boolean): Promise<RestoreResult>;
+    /**
+     * Restore a specific version by creating a new commit (ORIGINAL VERSION)
      * @param commit Commit object to restore
      * @param repoPath Repository path
      * @param skipConfirmation Skip uncommitted changes confirmation

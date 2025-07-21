@@ -303,14 +303,6 @@ export class FileOperationsService implements FileOperationsServiceInterface {
     }
 
     /**
-     * Create a temporary index file
-     */
-    createTempIndexFile(repoPath: string): string {
-        const gitDir = path.join(repoPath, '.git');
-        return this.createTempFilePath(gitDir, 'index', '');
-    }
-
-    /**
      * Join path segments safely
      */
     joinPath(...segments: string[]): string {

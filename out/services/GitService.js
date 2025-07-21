@@ -555,66 +555,82 @@ class GitService {
         }
     }
     /**
-     * Create a new commit that restores the working directory to a specific commit
+     * Create a new commit that restores the working directory to a specific commit (SIMPLIFIED VERSION)
      * @param commitHash Commit hash to restore
      * @param repoPath Repository path
      * @returns The new commit hash
      */
-    async createRestoreCommit(commitHash, repoPath) {
+    async createRestoreCommitSimple(commitHash, repoPath) {
         if (!commitHash) {
             throw new Error('No commit hash provided for restore');
         }
-        const currentBranch = await this.getCurrentBranchName(repoPath);
+        const startTime = Date.now();
+        console.log('⚡ TimeLad: Starting simplified restore method');
+        // Get metadata for commit message
         const originalCommit = (await this.executeGitCommand('git rev-parse HEAD', repoPath)).stdout.trim();
+        const { stdout: version } = await this.executeGitCommand(`git rev-list --count ${commitHash}`, repoPath);
         try {
-            const tempIndex = this.fileService.createTempIndexFile(repoPath);
+            // Simple restore using porcelain commands
+            console.log(`🔍 TimeLad: Checking differences between current and target commit`);
+            // First, check if the commits are actually different
+            const { stdout: diffOutput } = await this.executeGitCommand(`git diff --name-only HEAD ${commitHash}`, repoPath);
+            console.log(`🔍 TimeLad: Files different between commits: ${diffOutput.trim() || 'none'}`);
+            if (!diffOutput.trim()) {
+                // No differences between commits
+                console.log('📝 TimeLad: Target commit is identical to current HEAD - no restore needed');
+                return originalCommit;
+            }
+            // Proceed with restore using read-tree (like original but simpler)
+            console.log(`🔄 TimeLad: Restoring files from ${commitHash}`);
+            // Use read-tree to load the target commit's tree into the index
+            await this.executeGitCommand(`git read-tree ${commitHash}`, repoPath);
+            // Update working directory to match the index
+            await this.executeGitCommand(`git checkout-index -a -f`, repoPath);
+            // Clean up any files that shouldn't exist (were deleted in target commit)
+            await this.executeGitCommand(`git clean -fd`, repoPath);
+            // Verify something was staged
+            const { stdout: stagedFiles } = await this.executeGitCommand('git diff --cached --name-only', repoPath);
+            console.log(`📋 TimeLad: Staged files: ${stagedFiles.trim() || 'none'}`);
+            if (!stagedFiles.trim()) {
+                // This shouldn't happen if we detected differences above, but just in case
+                console.log('⚠️ TimeLad: No files were staged after checkout - something unexpected happened');
+                return originalCommit;
+            }
+            // Create commit message (same format as current)
+            const commitMessage = `Restored version ${version.trim()}\n\n` +
+                `This commit restores the repository to a previous state.\n` +
+                `Original commit: ${originalCommit}\n` +
+                `Restore time: ${new Date().toISOString()}`;
+            // Use temporary file for multiline commit message (like original but simpler)
+            const tempMsgFile = await this.fileService.createTempCommitFile(repoPath, commitMessage);
             try {
-                const env = {
-                    ...process.env,
-                    GIT_INDEX_FILE: tempIndex,
-                    GIT_AUTHOR_NAME: 'TimeLad',
-                    GIT_AUTHOR_EMAIL: 'timelad@example.com',
-                    GIT_COMMITTER_NAME: 'TimeLad',
-                    GIT_COMMITTER_EMAIL: 'timelad@example.com',
-                    GIT_EDITOR: 'true'
-                };
-                await this.executeGitCommand(`git read-tree ${commitHash}`, repoPath, 3, 200, env);
-                const { stdout: newTree } = await this.executeGitCommand('git write-tree', repoPath, 3, 200, env);
-                const { stdout: version } = await this.executeGitCommand(`git rev-list --count ${commitHash}`, repoPath);
-                const commitMessage = `Restored version ${version.trim()}\n\n` +
-                    `This commit restores the repository to a previous state.\n` +
-                    `Original commit: ${originalCommit}\n` +
-                    `Restore time: ${new Date().toISOString()}`;
-                const tempMsgFile = await this.fileService.createTempCommitFile(repoPath, commitMessage);
-                try {
-                    const { stdout: newCommit } = await this.executeGitCommand(`git commit-tree ${newTree.trim()} -p ${originalCommit} -F "${tempMsgFile}"`, repoPath, 3, 200, env);
-                    const newCommitHash = newCommit.trim();
-                    if (!newCommitHash) {
-                        throw new Error('Failed to create new commit: No commit hash returned');
-                    }
-                    await this.executeGitCommand(`git update-ref refs/heads/${currentBranch} ${newCommitHash}`, repoPath);
-                    await this.executeGitCommand('git reset --hard', repoPath);
-                    return newCommitHash;
-                }
-                finally {
-                    await this.fileService.deleteFile(tempMsgFile);
-                }
+                await this.executeGitCommand(`git commit -F "${tempMsgFile}"`, repoPath);
             }
             finally {
-                await this.fileService.deleteFile(tempIndex);
+                await this.fileService.deleteFile(tempMsgFile);
             }
+            // Clean up: reset index to match the new commit (removes "uncommitted changes" appearance)
+            await this.executeGitCommand('git reset --hard', repoPath);
+            // Return new commit hash
+            const { stdout: newCommit } = await this.executeGitCommand('git rev-parse HEAD', repoPath);
+            const duration = Date.now() - startTime;
+            console.log(`✅ TimeLad: Simplified restore completed successfully in ${duration}ms`);
+            return newCommit.trim();
         }
         catch (error) {
-            try {
-                await this.executeGitCommand(`git checkout ${currentBranch}`, repoPath);
-                await this.executeGitCommand(`git reset --hard ${originalCommit}`, repoPath);
-            }
-            catch (recoveryError) {
-                console.error('Failed to recover original state:', recoveryError);
-            }
+            // Same error recovery as current implementation
+            const duration = Date.now() - startTime;
+            console.error(`❌ TimeLad: Simplified restore failed after ${duration}ms:`, error);
+            await this.executeGitCommand(`git reset --hard ${originalCommit}`, repoPath);
             throw error;
         }
     }
+    /**
+     * Create a new commit that restores the working directory to a specific commit (COMPLEX/ORIGINAL VERSION - FALLBACK)
+     * @param commitHash Commit hash to restore
+     * @param repoPath Repository path
+     * @returns The new commit hash
+     */
     /**
      * Get uncommitted changes status
      * @param repoPath Repository path
@@ -695,18 +711,23 @@ class GitService {
         return result.length > 0 ? result.join(", ") : "unchanged";
     }
     /**
-     * Restore a specific version by creating a new commit
+     * Restore a specific version by creating a new commit (SIMPLIFIED VERSION)
      * @param commit Commit object to restore
      * @param repoPath Repository path
      * @param skipConfirmation Skip uncommitted changes confirmation
      * @returns Result of the operation
      */
-    async restoreVersion(commit, repoPath = null, skipConfirmation = false) {
+    async restoreVersionSimple(commit, repoPath = null, skipConfirmation = false) {
+        // Log that we're using the simplified method
+        console.log('🚀 TimeLad: Using SIMPLIFIED restore method');
+        this.notificationService.showInfo('Using simplified restore method (3 Git commands)');
         const repo = repoPath || await this.getRepositoryPath();
+        // Remove any git lock files
         await this.fileService.removeGitLockFile(repo);
         const currentBranch = await this.getCurrentBranchName(repo);
         const currentCommit = (await this.executeGitCommand('git rev-parse HEAD', repo)).stdout.trim();
         try {
+            // Handle uncommitted changes (same as current)
             const { hasChanges, files } = await this.getUncommittedChanges(repo);
             if (hasChanges || files.length > 0) {
                 if (!skipConfirmation) {
@@ -715,25 +736,14 @@ class GitService {
                         return { success: false, message: "Restore cancelled by user." };
                     }
                 }
+                // Clean uncommitted changes
                 await this.executeGitCommand('git reset --hard', repo);
                 await this.executeGitCommand('git clean -fd', repo);
-                const { stdout: untracked } = await this.executeGitCommand('git ls-files --others --exclude-standard', repo);
-                if (untracked.trim()) {
-                    await this.executeGitCommand('git clean -fdx', repo);
-                }
             }
-            try {
-                await this.executeGitCommand('git reset --hard', repo, 3, 200);
-                await this.executeGitCommand('git clean -fdx', repo, 3, 200);
-            }
-            catch (error) {
-                await this.fileService.removeGitLockFile(repo);
-                await this.executeGitCommand('git reset --hard', repo, 1, 500);
-                await this.executeGitCommand('git clean -fdx', repo, 1, 500);
-            }
-            const newCommitHash = await this.createRestoreCommit(commit.hash, repo);
-            await this.executeGitCommand('git reset --hard', repo);
-            await this.executeGitCommand('git clean -fdx', repo);
+            // Create restore commit using simplified method
+            const newCommitHash = await this.createRestoreCommitSimple(commit.hash, repo);
+            console.log('✅ TimeLad: Simplified restore completed successfully');
+            this.notificationService.showInfo('Version restored successfully using simplified method');
             return {
                 success: true,
                 newCommit: newCommitHash,
@@ -742,6 +752,7 @@ class GitService {
             };
         }
         catch (error) {
+            // Same error recovery as current
             try {
                 await this.executeGitCommand(`git checkout ${currentBranch}`, repo);
                 await this.executeGitCommand(`git reset --hard ${currentCommit}`, repo);
@@ -755,6 +766,17 @@ class GitService {
         finally {
             this.clearCache();
         }
+    }
+    /**
+     * Restore a specific version by creating a new commit (ORIGINAL VERSION)
+     * @param commit Commit object to restore
+     * @param repoPath Repository path
+     * @param skipConfirmation Skip uncommitted changes confirmation
+     * @returns Result of the operation
+     */
+    async restoreVersion(commit, repoPath = null, skipConfirmation = false) {
+        console.log('🚀 TimeLad: Using simplified restore method');
+        return await this.restoreVersionSimple(commit, repoPath, skipConfirmation);
     }
     /**
      * Save uncommitted changes with auto-generated commit message

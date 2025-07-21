@@ -91,7 +91,6 @@ export interface FileOperationsServiceInterface {
     readDirectoryWithTypes?(dirPath: string): Promise<any[]>;
     joinPath?(...segments: string[]): string;
     removeGitLockFile?(repoPath: string): Promise<boolean>;
-    createTempIndexFile?(repoPath: string): string;
     createTempCommitFile?(repoPath: string, message: string): Promise<string>;
     existsSync?(filePath: string): boolean;
     writeFileSync?(filePath: string, content: string): void;
