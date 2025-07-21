@@ -720,7 +720,6 @@ class GitService {
     async restoreVersionSimple(commit, repoPath = null, skipConfirmation = false) {
         // Log that we're using the simplified method
         console.log('🚀 TimeLad: Using SIMPLIFIED restore method');
-        this.notificationService.showInfo('Using simplified restore method (3 Git commands)');
         const repo = repoPath || await this.getRepositoryPath();
         // Remove any git lock files
         await this.fileService.removeGitLockFile(repo);
@@ -743,7 +742,6 @@ class GitService {
             // Create restore commit using simplified method
             const newCommitHash = await this.createRestoreCommitSimple(commit.hash, repo);
             console.log('✅ TimeLad: Simplified restore completed successfully');
-            this.notificationService.showInfo('Version restored successfully using simplified method');
             return {
                 success: true,
                 newCommit: newCommitHash,

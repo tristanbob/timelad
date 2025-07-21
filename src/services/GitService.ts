@@ -899,7 +899,6 @@ class GitService implements GitServiceInterface {
   ): Promise<RestoreResult> {
     // Log that we're using the simplified method
     console.log('🚀 TimeLad: Using SIMPLIFIED restore method');
-    this.notificationService.showInfo!('Using simplified restore method (3 Git commands)');
     
     const repo = repoPath || await this.getRepositoryPath();
     
@@ -930,7 +929,6 @@ class GitService implements GitServiceInterface {
       const newCommitHash = await this.createRestoreCommitSimple(commit.hash, repo);
       
       console.log('✅ TimeLad: Simplified restore completed successfully');
-      this.notificationService.showInfo!('Version restored successfully using simplified method');
       
       return { 
         success: true, 
