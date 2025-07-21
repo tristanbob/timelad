@@ -4,39 +4,62 @@ const { runTests } = require("@vscode/test-electron");
 async function main() {
   try {
     // Set environment variables for VS Code download
-    process.env.VSCODE_TEST_VERSION = "1.70.0";
     process.env.DISPLAY = process.env.DISPLAY || ":99.0";
-
-    // The folder containing the Extension Manifest package.json
-    const extensionDevelopmentPath = path.resolve(__dirname, "../");
-
-    // The path to test runner
-    const extensionTestsPath = path.resolve(__dirname, "./suite/index.js");
+    
+    // Windows path workaround - use temp directory for testing
+    const tempDir = process.env.TEMP || process.env.TMP || 'C:/temp';
+    const shortTestDir = path.join(tempDir, 'vscode-test-timelad');
+    
+    // Use forward slashes for VS Code compatibility on Windows
+    const extensionDevelopmentPath = path.resolve(__dirname, "../").replace(/\\/g, '/');
+    const extensionTestsPath = path.resolve(__dirname, "./suite/index.js").replace(/\\/g, '/');
+    
+    // Ensure test workspace exists
+    const testWorkspace = path.resolve(__dirname, "../test-fixtures").replace(/\\/g, '/');
 
     console.log("🚀 Starting integration tests...");
     console.log(`Extension path: ${extensionDevelopmentPath}`);
     console.log(`Test path: ${extensionTestsPath}`);
+    console.log(`Test workspace: ${testWorkspace}`);
 
     // Download VS Code, unzip it and run the integration test
     await runTests({
       extensionDevelopmentPath,
       extensionTestsPath,
-      // Use older version that supports 32-bit Windows
-      version: "1.70.0",
-      // Set platform to auto-detect
-      // platform: 'win32-archive', // Let it auto-detect
+      // Use test workspace
+      extensionTestsEnv: { 
+        VSCODE_TEST_WORKSPACE: testWorkspace 
+      },
+      // Use latest stable version
+      version: "stable",
       // Disable other extensions during testing
       launchArgs: [
         "--disable-extensions",
         "--disable-workspace-trust",
         "--skip-welcome",
         "--skip-release-notes",
-        "--no-sandbox", // Sometimes needed for older versions
+        "--no-sandbox",
+        "--disable-dev-shm-usage", // Helps with CI environments
+        "--disable-gpu", // Helps with headless environments
+        "--extensionTestsPath=" + extensionTestsPath, // Explicit path setting
       ],
       // Set download timeout
-      downloadTimeout: 180000, // 3 minutes for slower downloads
+      downloadTimeout: 300000, // 5 minutes for slower downloads
       // Retry options
-      retryCount: 2,
+      retryCount: 3,
+      // Use headless mode for CI
+      ...(process.env.CI && { 
+        launchArgs: [
+          "--disable-extensions",
+          "--disable-workspace-trust",
+          "--skip-welcome", 
+          "--skip-release-notes",
+          "--no-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-gpu",
+          "--headless"
+        ]
+      })
     });
 
     console.log("✅ Integration tests completed successfully!");
@@ -51,10 +74,16 @@ async function main() {
       console.log("3. Or skip integration tests and use: npm run test:unit");
       console.log("4. Check if corporate firewall is blocking downloads");
       console.log("5. Try: npm run test:safe (unit tests only)");
-    } else if (err.message.includes("32-bit")) {
-      console.log("\n💡 32-bit Windows detected:");
-      console.log("- Using VS Code 1.70.0 (last version with 32-bit support)");
-      console.log("- This is normal for 32-bit systems");
+    } else if (err.message.includes("EACCES") || err.message.includes("permission")) {
+      console.log("\n🔧 Permission issues detected:");
+      console.log("1. Try running as administrator (Windows) or with sudo (Mac/Linux)");
+      console.log("2. Check that the VS Code download directory is writable");
+      console.log("3. Clear any existing VS Code test installations");
+    } else if (err.message.includes("timeout") || err.message.includes("TIMEOUT")) {
+      console.log("\n⏰ Timeout detected:");
+      console.log("1. Your connection may be slow - try again");
+      console.log("2. VS Code download servers may be busy");
+      console.log("3. Consider running unit tests only with: npm run test:unit");
     }
 
     process.exit(1);

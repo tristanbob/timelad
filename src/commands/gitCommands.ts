@@ -1,18 +1,63 @@
-const vscode = require("vscode");
-const GitService = require("../services/GitService");
-const GitHubService = require("../services/GitHubService");
-const NotificationService = require("../services/NotificationService");
-const FileOperationsService = require("../services/FileOperationsService");
+import * as vscode from 'vscode';
+import { GitService } from '../services/GitService';
+import { NotificationService } from '../services/NotificationService';
+import { FileOperationsService } from '../services/FileOperationsService';
+import { GitCommit, GitHubRepository } from '../types';
+
+// Import services
+import { GitHubService } from '../services/GitHubService';
+
 const {
   getCommitHistoryTemplate,
   getCommitDetailsTemplate,
-} = require("../views/templates/webviewTemplates");
-const constants = require("../constants");
+} = require('../views/templates/webviewTemplates');
+
+const constants = require('../constants');
+
+interface WebviewMessage {
+  command: string;
+  hash?: string;
+  [key: string]: any;
+}
+
+
+interface RepositoryQuickPickItem extends vscode.QuickPickItem {
+  repository: GitHubRepository;
+}
+
+interface RepositoryDetails {
+  description: string;
+  isPrivate: boolean;
+}
+
+interface CommitData {
+  hash: string;
+  author: string;
+  date: string;
+  subject: string;
+  version: number;
+}
+
+// Helper function to convert GitCommit to CommitData
+function gitCommitToCommitData(commit: GitCommit): CommitData {
+  return {
+    hash: commit.hash,
+    author: commit.author,
+    date: commit.date,
+    subject: commit.subject || commit.message,
+    version: 0 // Will be filled by GitService
+  };
+}
 
 /**
  * Refactored Git Commands handler with separated services
  */
-class GitCommands {
+export class GitCommands {
+  private readonly notificationService: NotificationService;
+  private readonly fileService: FileOperationsService;
+  private readonly gitService: GitService;
+  private readonly githubService: any; // Will be typed when GitHubService is migrated
+
   constructor() {
     this.notificationService = new NotificationService();
     this.fileService = new FileOperationsService();
@@ -28,25 +73,29 @@ class GitCommands {
 
   /**
    * Get the GitService instance
-   * @returns {GitService} The GitService instance
    */
-  getGitService() {
+  getGitService(): GitService {
     return this.gitService;
   }
 
   /**
    * Handle messages from the panel webview
-   * @param {Object} message Message from webview
-   * @param {Array} commits Array of commits
-   * @param {vscode.WebviewPanel} panel The webview panel
    */
-  async handlePanelWebviewMessage(message, commits, panel) {
+  async handlePanelWebviewMessage(
+    message: WebviewMessage, 
+    commits: GitCommit[], 
+    panel: vscode.WebviewPanel
+  ): Promise<void> {
     switch (message.command) {
       case "showCommit":
-        await this.showCommitDetailsFromPanel(message.hash, commits);
+        if (message.hash) {
+          await this.showCommitDetailsFromPanel(message.hash, commits);
+        }
         break;
       case "restoreVersion":
-        await this.restoreVersionFromPanel(message.hash, commits, panel);
+        if (message.hash) {
+          await this.restoreVersionFromPanel(message.hash, commits, panel);
+        }
         break;
       default:
         console.warn(
@@ -57,10 +106,8 @@ class GitCommands {
 
   /**
    * Show commit details from panel
-   * @param {string} commitHash Commit hash
-   * @param {Array} commits Array of commits
    */
-  async showCommitDetailsFromPanel(commitHash, commits) {
+  async showCommitDetailsFromPanel(commitHash: string, commits: GitCommit[]): Promise<void> {
     const commit = commits.find((c) => c.hash === commitHash);
     if (!commit) {
       throw new Error("Commit not found");
@@ -70,7 +117,7 @@ class GitCommands {
 
     const panel = vscode.window.createWebviewPanel(
       constants.COMMIT_DETAILS_VIEW_ID,
-      `${constants.EXTENSION_NAME}: Version ${commit.version}`,
+      `${constants.EXTENSION_NAME}: Version ${(commit as any).version}`,
       vscode.ViewColumn.One,
       {
         enableScripts: false,
@@ -83,54 +130,56 @@ class GitCommands {
 
   /**
    * Restore version from panel
-   * @param {string} commitHash Commit hash
-   * @param {Array} commits Array of commits
-   * @param {vscode.WebviewPanel} panel The webview panel
    */
-  async restoreVersionFromPanel(commitHash, commits, panel) {
+  async restoreVersionFromPanel(
+    commitHash: string, 
+    commits: GitCommit[], 
+    panel: vscode.WebviewPanel
+  ): Promise<void> {
     const commit = commits.find((c) => c.hash === commitHash);
     if (!commit) {
       throw new Error("Commit not found");
     }
 
     try {
-      await this.gitService.restoreVersion(commit);
+      await this.gitService.restoreVersion(gitCommitToCommitData(commit));
       panel.dispose();
     } catch (error) {
-      throw new Error(`Failed to restore version: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to restore version: ${errorMessage}`);
     }
   }
 
   /**
    * Restore version command (direct call)
-   * @param {Object} commit Commit object
-   * @param {string} repoPath Repository path
    */
-  async restoreVersion(commit, repoPath) {
+  async restoreVersion(commit: GitCommit, repoPath: string): Promise<void> {
     if (!commit || !repoPath) {
       await this.notificationService.showError(constants.MESSAGES.INVALID_RESTORE_PARAMS);
       return;
     }
 
     try {
-      await this.gitService.restoreVersion(commit, repoPath);
+      await this.gitService.restoreVersion(gitCommitToCommitData(commit), repoPath);
     } catch (error) {
-      await this.notificationService.showError(error.message);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await this.notificationService.showError(errorMessage);
     }
   }
 
   /**
    * Save uncommitted changes with AI-generated commit message
    */
-  async saveChanges() {
+  async saveChanges(): Promise<void> {
     try {
       const commitMessage = await this.gitService.saveChanges();
       // Success is handled by the calling component
     } catch (error) {
-      if (error.message === constants.MESSAGES.NO_UNCOMMITTED_CHANGES) {
-        await this.notificationService.showInfo(error.message);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage === constants.MESSAGES.NO_UNCOMMITTED_CHANGES) {
+        await this.notificationService.showInfo(errorMessage);
       } else {
-        await this.notificationService.showError(`Failed to save changes: ${error.message}`);
+        await this.notificationService.showError(`Failed to save changes: ${errorMessage}`);
       }
     }
   }
@@ -138,7 +187,7 @@ class GitCommands {
   /**
    * Set up version tracking for the current workspace
    */
-  async setupVersionTracking() {
+  async setupVersionTracking(): Promise<void> {
     try {
       await this.gitService.createNewRepository();
       await this.notificationService.executeCommand(constants.COMMANDS.REFRESH_GIT_HISTORY);
@@ -150,7 +199,7 @@ class GitCommands {
   /**
    * Save code to GitHub, creating repository if needed
    */
-  async saveToGitHub() {
+  async saveToGitHub(): Promise<void> {
     try {
       const repoPath = await this.gitService.getRepositoryPath();
 
@@ -182,7 +231,7 @@ class GitCommands {
 
           const repoExists = await this.githubService.repositoryExists(user.login, repoName);
 
-          let repoUrl;
+          let repoUrl: string;
           if (!repoExists) {
             progress.report({ increment: 40, message: "Creating GitHub repository..." });
 
@@ -219,37 +268,36 @@ class GitCommands {
           await this.notificationService.showSuccess(
             `🎉 Successfully saved to GitHub! Your code is now online.`,
             "View on GitHub",
-            () => this.notificationService.openExternalUrl(repoWebUrl)
+            async () => {
+              await this.notificationService.openExternalUrl(repoWebUrl);
+            }
           );
         }
       );
     } catch (error) {
-      await this.notificationService.showError(`Failed to save to GitHub: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await this.notificationService.showError(`Failed to save to GitHub: ${errorMessage}`);
     }
   }
 
   /**
    * Prompt user for repository name
-   * @param {string} defaultName Default repository name
-   * @returns {Promise<string|null>} Repository name or null if cancelled
    */
-  async promptForRepositoryName(defaultName) {
+  private async promptForRepositoryName(defaultName: string): Promise<string | null> {
     return await this.notificationService.showRepositoryNameDialog(defaultName);
   }
 
   /**
    * Prompt user for repository details
-   * @param {string} repoName Repository name
-   * @returns {Promise<Object|null>} Repository details or null if cancelled
    */
-  async promptForRepositoryDetails(repoName) {
+  private async promptForRepositoryDetails(repoName: string): Promise<RepositoryDetails | null> {
     return await this.notificationService.showRepositoryDetailsDialog(repoName);
   }
 
   /**
    * Load a repository from GitHub by cloning it
    */
-  async loadFromGitHub() {
+  async loadFromGitHub(): Promise<void> {
     try {
       await this.notificationService.showProgress(
         "Loading from GitHub...",
@@ -312,17 +360,16 @@ class GitCommands {
         }
       );
     } catch (error) {
-      await this.notificationService.showError(`Failed to load from GitHub: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await this.notificationService.showError(`Failed to load from GitHub: ${errorMessage}`);
     }
   }
 
   /**
    * Prompt user to select a repository from their GitHub account
-   * @param {Array} repositories Array of repository objects
-   * @returns {Promise<Object|null>} Selected repository or null if cancelled
    */
-  async promptForRepositorySelection(repositories) {
-    const items = repositories.map((repo) => ({
+  private async promptForRepositorySelection(repositories: GitHubRepository[]): Promise<GitHubRepository | null> {
+    const items: RepositoryQuickPickItem[] = repositories.map((repo) => ({
       label: repo.name,
       description: repo.description,
       detail: `${repo.language || "Unknown"} • Updated: ${new Date(
@@ -342,25 +389,23 @@ class GitCommands {
 
   /**
    * Prompt user for clone location
-   * @param {string} repoName Repository name for default folder
-   * @returns {Promise<string|null>} Target path or null if cancelled
    */
-  async promptForCloneLocation(repoName) {
+  private async promptForCloneLocation(repoName: string): Promise<string | null> {
     const cloneOptions = await this.notificationService.showCloneLocationDialog();
 
     if (!cloneOptions) {
       return null;
     }
 
-    let basePath;
+    let basePath: string;
 
     if (cloneOptions === "Current Workspace") {
       const workspaceFolders = vscode.workspace.workspaceFolders;
-      if (!workspaceFolders || workspaceFolders.length === 0) {
+      if (!workspaceFolders?.[0]) {
         await this.notificationService.showError("No workspace folder is currently open.");
         return null;
       }
-      basePath = workspaceFolders[0].uri.fsPath;
+      basePath = workspaceFolders[0]!.uri.fsPath;
     } else {
       const folderUri = await this.notificationService.showOpenDialog({
         canSelectFiles: false,
@@ -369,11 +414,11 @@ class GitCommands {
         openLabel: "Select Folder",
       });
 
-      if (!folderUri || folderUri.length === 0) {
+      if (!folderUri?.[0]) {
         return null;
       }
 
-      basePath = folderUri[0].fsPath;
+      basePath = folderUri[0]!.fsPath;
     }
 
     const targetPath = this.fileService.joinPath(basePath, repoName);
@@ -390,7 +435,7 @@ class GitCommands {
         const customName = await this.notificationService.showInputBox({
           prompt: "Enter a different folder name",
           value: `${repoName}-clone`,
-          validateInput: (value) => {
+          validateInput: (value: string) => {
             if (!value || value.trim().length === 0) {
               return "Folder name is required";
             }
@@ -415,5 +460,3 @@ class GitCommands {
     return targetPath;
   }
 }
-
-module.exports = GitCommands;

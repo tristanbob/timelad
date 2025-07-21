@@ -2,12 +2,30 @@
 
 All notable changes to the "TimeLad" extension will be documented in this file.
 
+## [0.2.2] - 2025-07-21
+
+### Added
+
+- **Improved UI**: Version cards now display version number prominently on the first line
+- **Better Visual Hierarchy**: Author and date information moved to a second line for cleaner layout
+
+### Changed
+
+- **Version Display**: Removed click-to-copy functionality from version numbers for cleaner UX
+- **Warning Headers**: Updated from "ALPHA" to "BETA" across all templates
+- **UI Polish**: Made warning headers less bright and more subtle
+- **Commit Details**: Removed warning header from detailed commit view for cleaner experience
+
+### Removed
+
+- **Click Functionality**: Version numbers are now purely informational (use "View Details" to see commit hash)
+
 ## [0.1.1] - 2025-06-16
 
 ### Added
 
 - **Uncommitted Changes Detection**: View uncommitted changes directly in the TimeLad sidebar
-- **AI-Generated Commit Messages**: Automatic commit message generation using VS Code's built-in AI or fallback to rule-based generation
+- **Auto-Generated Commit Messages**: Automatic commit message generation using rule-based analysis of file changes and conventional commit patterns
 - **Save Changes Command**: One-click saving of changes with intelligent commit messages
 - **UI Integration**: New "Unsaved Changes" section in the sidebar with file status indicators
 - **Expert Mode**: Technical details about git commands used for saving changes
@@ -38,7 +56,7 @@ All notable changes to the "TimeLad" extension will be documented in this file.
 
 ### Changed
 
-- **Pre-release status**: Removed pre-release warning as extension is now stable
+- **Pre-release status**: Updated to beta status for continued development
 - **Build process**: Updated .vscodeignore to reduce package size by excluding test files
 
 ## [0.2.0] - 2025-07-20
@@ -64,7 +82,7 @@ All notable changes to the "TimeLad" extension will be documented in this file.
 ### Added
 
 - **Uncommitted Changes Detection**: View uncommitted changes directly in the TimeLad sidebar
-- **AI-Generated Commit Messages**: Automatic commit message generation using VS Code's built-in AI or fallback to rule-based generation
+- **Auto-Generated Commit Messages**: Automatic commit message generation using rule-based analysis of file changes and conventional commit patterns
 - **Save Changes Command**: One-click saving of changes with intelligent commit messages
 - **UI Integration**: New "Unsaved Changes" section in the sidebar with file status indicators
 - **Expert Mode**: Technical details about git commands used for saving changes

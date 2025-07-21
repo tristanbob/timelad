@@ -1,39 +1,178 @@
-const vscode = require("vscode");
-const GitService = require("../services/GitService");
-const NotificationService = require("../services/NotificationService");
-const FileOperationsService = require("../services/FileOperationsService");
-const {
+import * as vscode from 'vscode';
+import { GitService } from '../services/GitService';
+import { NotificationService } from '../services/NotificationService';
+import { FileOperationsService } from '../services/FileOperationsService';
+import {
   getLoadingTemplate,
   getSidebarTemplate,
-} = require("../views/templates/webviewTemplates");
-const constants = require("../constants");
+} from '../views/templates/webviewTemplates';
+import * as constants from '../constants';
+
+// Extended message types for all webview communications
+interface WebviewMessage {
+  command: string;
+  hash?: string;
+  url?: string;
+  data?: any;
+}
+
+interface ShowCommitMessage extends WebviewMessage {
+  command: 'showCommit';
+  hash: string;
+}
+
+interface RequestRestoreMessage extends WebviewMessage {
+  command: 'requestRestore';
+  hash: string;
+}
+
+interface ConfirmRestoreMessage extends WebviewMessage {
+  command: 'confirmRestore';
+  hash: string;
+}
+
+interface SaveChangesMessage extends WebviewMessage {
+  command: 'saveChanges';
+}
+
+interface RequestDiscardMessage extends WebviewMessage {
+  command: 'requestDiscard';
+}
+
+interface ConfirmDiscardMessage extends WebviewMessage {
+  command: 'confirmDiscard';
+}
+
+interface LoadMoreCommitsMessage extends WebviewMessage {
+  command: 'loadMoreCommits';
+}
+
+interface CreateRepositoryMessage extends WebviewMessage {
+  command: 'createRepository';
+}
+
+interface LoadFromGitHubMessage extends WebviewMessage {
+  command: 'loadFromGitHub';
+}
+
+interface OpenUrlMessage extends WebviewMessage {
+  command: 'openUrl';
+  url: string;
+}
+
+interface RefreshMessage extends WebviewMessage {
+  command: 'refresh';
+}
+
+type TimeLadWebviewMessage = 
+  | ShowCommitMessage
+  | RequestRestoreMessage
+  | ConfirmRestoreMessage
+  | SaveChangesMessage
+  | RequestDiscardMessage
+  | ConfirmDiscardMessage
+  | LoadMoreCommitsMessage
+  | CreateRepositoryMessage
+  | LoadFromGitHubMessage
+  | OpenUrlMessage
+  | RefreshMessage;
+
+// Import the GitCommit type from types
+import { GitCommit } from '../types';
+
+interface CommitData {
+  hash: string;
+  author: string;
+  date: string;
+  subject: string;
+  version: number;
+}
+
+// Helper functions to convert between types
+function commitDataToGitCommit(commit: CommitData): GitCommit {
+  return {
+    hash: commit.hash,
+    message: commit.subject,
+    author: commit.author,
+    date: commit.date,
+    subject: commit.subject
+  };
+}
+
+function gitCommitToCommitData(commit: GitCommit): CommitData {
+  return {
+    hash: commit.hash,
+    author: commit.author,
+    date: commit.date,
+    subject: commit.subject || commit.message,
+    version: 0 // Will be filled by GitService
+  };
+}
+
+
+interface UncommittedChanges {
+  hasChanges: boolean;
+  files: Array<{
+    fileName: string;
+    status: string;
+  }>;
+  summary?: string;
+}
+
+interface PaginationState {
+  currentOffset: number;
+  hasMore: boolean;
+  totalCount: number;
+  isLoading: boolean;
+}
+
+interface PaginatedCommitsResult {
+  commits: CommitData[];
+  nextOffset: number;
+  hasMore: boolean;
+  totalCount: number;
+}
+
+interface SaveChangesOptions {
+  discard?: boolean;
+}
+
+interface PaginationInfo {
+  hasMore: boolean;
+  totalCount: number;
+  showingCount: number;
+}
 
 /**
  * Refactored GitHistoryWebviewProvider with separated services
  */
-class GitHistoryWebviewProvider {
-  constructor(context) {
-    this.context = context;
-    this.view = null;
-    this.commits = [];
-    this.uncommittedChanges = null;
-    this.isRestoring = false;
-    this.isDisposed = false;
-    
-    // Progressive loading state
-    this.paginationState = {
-      currentOffset: 0,
-      hasMore: true,
-      totalCount: 0,
-      isLoading: false
-    };
+export class GitHistoryWebviewProvider implements vscode.WebviewViewProvider {
+  private view: vscode.WebviewView | null = null;
+  private commits: CommitData[] = [];
+  private uncommittedChanges: UncommittedChanges | null = null;
+  private isRestoring: boolean = false;
+  private isDisposed: boolean = false;
+  
+  // Progressive loading state
+  private paginationState: PaginationState = {
+    currentOffset: 0,
+    hasMore: true,
+    totalCount: 0,
+    isLoading: false
+  };
 
-    // Initialize services
+  // Services
+  private readonly notificationService: NotificationService;
+  private readonly fileService: FileOperationsService;
+  private readonly gitService: GitService;
+  
+  private repositoryWatcher: vscode.FileSystemWatcher | null = null;
+
+  constructor(private readonly context: vscode.ExtensionContext) {
+    // Initialize services with dependency injection
     this.notificationService = new NotificationService();
     this.fileService = new FileOperationsService();
     this.gitService = new GitService(this.notificationService, this.fileService);
-    
-    this.repositoryWatcher = null;
 
     this.setupWorkspaceListeners();
   }
@@ -41,7 +180,7 @@ class GitHistoryWebviewProvider {
   /**
    * Setup listeners for workspace changes to detect repositories faster
    */
-  setupWorkspaceListeners() {
+  private setupWorkspaceListeners(): void {
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       if (this.isRestoring) return;
       
@@ -74,18 +213,19 @@ class GitHistoryWebviewProvider {
 
   /**
    * Proactively scan for repositories
-   * @returns {Promise<boolean>} True if repository found
+   * @returns Promise<boolean> True if repository found
    */
-  async proactivelyScanForRepositories() {
+  private async proactivelyScanForRepositories(): Promise<boolean> {
     try {
       return await this.gitService.hasRepositoryRobust();
     } catch (error) {
-      console.log(`TimeLad: Proactive scan failed: ${error.message}`);
+      console.log(`TimeLad: Proactive scan failed: ${(error as Error).message}`);
       return false;
     }
   }
 
-  async resolveWebviewView(webviewView) {
+  async resolveWebviewView(webviewView: vscode.WebviewView): Promise<void> {
+    console.log('TimeLad: Resolving webview view');
     this.view = webviewView;
 
     webviewView.webview.options = {
@@ -93,13 +233,15 @@ class GitHistoryWebviewProvider {
       localResourceRoots: [this.context.extensionUri],
     };
 
-    this.proactivelyScanForRepositories().then((hasRepo) => {
-      if (hasRepo && webviewView.visible) {
-        this.refresh();
-      }
-    });
-
-    await this.refresh();
+    console.log('TimeLad: Starting initial repository scan');
+    try {
+      const hasRepo = await this.proactivelyScanForRepositories();
+      console.log('TimeLad: Repository scan complete, hasRepo:', hasRepo);
+      await this.refresh();
+    } catch (error) {
+      console.error('TimeLad: Error during initial repository scan:', error);
+      await this.refresh();
+    }
 
     webviewView.onDidChangeVisibility(() => {
       if (webviewView.visible) {
@@ -107,18 +249,18 @@ class GitHistoryWebviewProvider {
       }
     });
 
-    webviewView.webview.onDidReceiveMessage(async (message) => {
+    webviewView.webview.onDidReceiveMessage(async (message: TimeLadWebviewMessage) => {
       try {
         await this.handleWebviewMessage(message);
       } catch (error) {
         console.error(`${constants.EXTENSION_NAME}: Error handling webview message:`, error);
         // Check if error is due to extension being disposed/canceled during shutdown
-        if (error.name === 'Canceled' || error.message === 'Canceled') {
+        if ((error as any).name === 'Canceled' || (error as Error).message === 'Canceled') {
           console.log(`${constants.EXTENSION_NAME}: Webview message canceled during extension shutdown`);
           return;
         }
         try {
-          await this.notificationService.showError(error.message);
+          await this.notificationService.showError((error as Error).message);
         } catch (notificationError) {
           // Silently fail if notification service is unavailable during shutdown
           console.error(`${constants.EXTENSION_NAME}: Failed to show error notification:`, notificationError);
@@ -129,13 +271,14 @@ class GitHistoryWebviewProvider {
 
   /**
    * Handle messages from the webview
-   * @param {Object} message Message from webview
+   * @param message Message from webview
    */
-  async handleWebviewMessage(message) {
+  private async handleWebviewMessage(message: TimeLadWebviewMessage): Promise<void> {
     if (this.isDisposed) {
       console.log(`${constants.EXTENSION_NAME}: Ignoring webview message - provider is disposed`);
       return;
     }
+    
     switch (message.command) {
       case "showCommit":
         await this.showCommitDetails(message.hash);
@@ -180,15 +323,15 @@ class GitHistoryWebviewProvider {
         break;
         
       default:
-        console.warn(`${constants.EXTENSION_NAME}: Unknown webview message command: ${message.command}`);
+        console.warn(`${constants.EXTENSION_NAME}: Unknown webview message command: ${(message as any).command}`);
     }
   }
 
   /**
    * Show commit details for a specific commit
-   * @param {string} commitHash Commit hash
+   * @param commitHash Commit hash
    */
-  async showCommitDetails(commitHash) {
+  private async showCommitDetails(commitHash: string): Promise<void> {
     const commit = this.commits.find((c) => c.hash === commitHash);
     if (!commit) {
       throw new Error("Commit not found");
@@ -200,9 +343,9 @@ class GitHistoryWebviewProvider {
 
   /**
    * Check for unsaved changes in the workspace
-   * @returns {Promise<boolean>} True if there are unsaved changes
+   * @returns Promise<boolean> True if there are unsaved changes
    */
-  async hasUnsavedChanges() {
+  private async hasUnsavedChanges(): Promise<boolean> {
     const unsavedDocuments = vscode.workspace.textDocuments.filter(
       doc => doc.isDirty && !doc.isUntitled
     );
@@ -211,9 +354,9 @@ class GitHistoryWebviewProvider {
 
   /**
    * Request restore - checks for uncommitted changes and shows modal if needed
-   * @param {string} commitHash Commit hash
+   * @param commitHash Commit hash
    */
-  async requestRestore(commitHash) {
+  private async requestRestore(commitHash: string): Promise<void> {
     const commit = this.commits.find((c) => c.hash === commitHash);
     if (!commit) {
       await this.notificationService.showError("Commit not found");
@@ -226,7 +369,7 @@ class GitHistoryWebviewProvider {
       
       if (hasChanges || files.length > 0) {
         // Show custom confirmation modal in webview
-        this.view.webview.postMessage({
+        this.view?.webview.postMessage({
           command: 'showConfirmation',
           title: 'Confirm Version Restore',
           message: `You have ${files.length} uncommitted change(s) that will be permanently lost.`,
@@ -241,16 +384,16 @@ class GitHistoryWebviewProvider {
         await this.restoreVersion(commitHash, true);
       }
     } catch (error) {
-      await this.notificationService.showError(`Error checking for changes: ${error.message}`);
+      await this.notificationService.showError(`Error checking for changes: ${(error as Error).message}`);
     }
   }
 
   /**
    * Restore a specific version
-   * @param {string} commitHash Commit hash
-   * @param {boolean} skipConfirmation Skip confirmation checks
+   * @param commitHash Commit hash
+   * @param skipConfirmation Skip confirmation checks
    */
-  async restoreVersion(commitHash, skipConfirmation = false) {
+  private async restoreVersion(commitHash: string, skipConfirmation: boolean = false): Promise<void> {
     const commit = this.commits.find((c) => c.hash === commitHash);
     if (!commit) {
       throw new Error("Commit not found");
@@ -270,7 +413,7 @@ class GitHistoryWebviewProvider {
 
     // Show loading spinner
     if (this.view) {
-      this.view.webview.html = this.getLoadingTemplate(`Restoring version ${commit.version}...`);
+      this.view.webview.html = this.getLoadingTemplate(`Restoring version ${commit.version || commit.hash}...`);
     }
 
     this.isRestoring = true;
@@ -280,7 +423,7 @@ class GitHistoryWebviewProvider {
       const result = await this.gitService.restoreVersion(commit, null, skipConfirmation);
       
       if (!result.success) {
-        await this.notificationService.showError(result.message);
+        await this.notificationService.showError(result.message || 'Restore failed');
         return;
       }
       
@@ -302,7 +445,7 @@ class GitHistoryWebviewProvider {
       if (this.view) {
         await this.refresh();
       }
-      throw new Error(`Failed to restore version: ${error.message}`);
+      throw new Error(`Failed to restore version: ${(error as Error).message}`);
     } finally {
       this.isRestoring = false;
     }
@@ -310,15 +453,15 @@ class GitHistoryWebviewProvider {
 
   /**
    * Create a panel to show commit details
-   * @param {Object} commit Commit object
-   * @param {string} commitDetails Detailed commit information
+   * @param commit Commit object
+   * @param commitDetails Detailed commit information
    */
-  async createCommitDetailsPanel(commit, commitDetails) {
+  private async createCommitDetailsPanel(commit: CommitData, commitDetails: string): Promise<void> {
     const { getCommitDetailsTemplate } = require("../views/templates/webviewTemplates");
 
     const panel = vscode.window.createWebviewPanel(
       constants.COMMIT_DETAILS_VIEW_ID,
-      `${constants.EXTENSION_NAME}: Version ${commit.version}`,
+      `${constants.EXTENSION_NAME}: Version ${commit.version || commit.hash}`,
       vscode.ViewColumn.One,
       {
         enableScripts: false,
@@ -326,13 +469,13 @@ class GitHistoryWebviewProvider {
       }
     );
 
-    panel.webview.html = getCommitDetailsTemplate(commit, commitDetails);
+    panel.webview.html = getCommitDetailsTemplate(commitDataToGitCommit(commit), commitDetails);
   }
 
   /**
    * Request discard - checks for uncommitted changes and shows modal
    */
-  async requestDiscard() {
+  private async requestDiscard(): Promise<void> {
     try {
       const repoPath = await this.gitService.getRepositoryPath();
       const { hasChanges, files } = await this.gitService.getUncommittedChanges(repoPath);
@@ -343,7 +486,7 @@ class GitHistoryWebviewProvider {
       }
 
       // Show custom discard confirmation modal in webview
-      this.view.webview.postMessage({
+      this.view?.webview.postMessage({
         command: 'showDiscardConfirmation',
         title: 'Confirm Discard Changes',
         message: `You are about to permanently discard ${files.length} uncommitted change(s).`,
@@ -353,15 +496,15 @@ class GitHistoryWebviewProvider {
         }))
       });
     } catch (error) {
-      await this.notificationService.showError(`Error checking for changes: ${error.message}`);
+      await this.notificationService.showError(`Error checking for changes: ${(error as Error).message}`);
     }
   }
 
   /**
    * Discard all uncommitted changes
-   * @param {boolean} skipConfirmation Skip confirmation checks
+   * @param skipConfirmation Skip confirmation checks
    */
-  async discardChanges(skipConfirmation = false) {
+  private async discardChanges(skipConfirmation: boolean = false): Promise<void> {
     try {
       const uncommittedChanges = await this.gitService.getUncommittedChanges();
       
@@ -396,17 +539,17 @@ class GitHistoryWebviewProvider {
         
         await this.notificationService.showInfo('All changes have been discarded');
       } catch (error) {
-        await this.notificationService.showError(`Failed to discard changes: ${error.message}`);
+        await this.notificationService.showError(`Failed to discard changes: ${(error as Error).message}`);
       }
     } catch (error) {
-      await this.notificationService.showError(`Error preparing to discard changes: ${error.message}`);
+      await this.notificationService.showError(`Error preparing to discard changes: ${(error as Error).message}`);
     }
   }
 
   /**
    * Save uncommitted changes
    */
-  async saveChanges(options = {}) {
+  private async saveChanges(options: SaveChangesOptions = {}): Promise<void> {
     if (options.discard) {
       await this.discardChanges();
       return;
@@ -441,10 +584,10 @@ class GitHistoryWebviewProvider {
         await this.refresh();
       }
       
-      if (error.message === constants.MESSAGES.NO_UNCOMMITTED_CHANGES) {
-        await this.notificationService.showInfo(error.message);
+      if ((error as Error).message === constants.MESSAGES.NO_UNCOMMITTED_CHANGES) {
+        await this.notificationService.showInfo((error as Error).message);
       } else {
-        await this.notificationService.showError(`Failed to save changes: ${error.message}`);
+        await this.notificationService.showError(`Failed to save changes: ${(error as Error).message}`);
       }
     }
   }
@@ -452,9 +595,11 @@ class GitHistoryWebviewProvider {
   /**
    * Create a new repository
    */
-  async createRepository() {
+  private async createRepository(): Promise<void> {
     try {
-      this.view.webview.html = getLoadingTemplate();
+      if (this.view) {
+        this.view.webview.html = getLoadingTemplate();
+      }
 
       const result = await this.gitService.createNewRepository();
 
@@ -472,7 +617,7 @@ class GitHistoryWebviewProvider {
   /**
    * Load more commits for progressive loading
    */
-  async loadMoreCommits() {
+  private async loadMoreCommits(): Promise<void> {
     if (this.paginationState.isLoading || !this.paginationState.hasMore) {
       return;
     }
@@ -481,7 +626,7 @@ class GitHistoryWebviewProvider {
       this.paginationState.isLoading = true;
       
       // Send loading state to webview
-      this.view.webview.postMessage({
+      this.view?.webview.postMessage({
         command: 'setLoadingMore',
         isLoading: true
       });
@@ -500,7 +645,7 @@ class GitHistoryWebviewProvider {
       this.paginationState.totalCount = result.totalCount;
 
       // Send new commits to webview
-      this.view.webview.postMessage({
+      this.view?.webview.postMessage({
         command: 'appendCommits',
         commits: result.commits,
         hasMore: result.hasMore,
@@ -509,13 +654,13 @@ class GitHistoryWebviewProvider {
 
     } catch (error) {
       console.error('Error loading more commits:', error);
-      this.view.webview.postMessage({
+      this.view?.webview.postMessage({
         command: 'showError',
-        error: error.message
+        error: (error as Error).message
       });
     } finally {
       this.paginationState.isLoading = false;
-      this.view.webview.postMessage({
+      this.view?.webview.postMessage({
         command: 'setLoadingMore',
         isLoading: false
       });
@@ -525,7 +670,7 @@ class GitHistoryWebviewProvider {
   /**
    * Reset pagination state for refresh
    */
-  resetPaginationState() {
+  private resetPaginationState(): void {
     this.paginationState = {
       currentOffset: 0,
       hasMore: true,
@@ -538,23 +683,29 @@ class GitHistoryWebviewProvider {
   /**
    * Refresh the webview content
    */
-  async refresh() {
+  public async refresh(): Promise<void> {
+    console.log('TimeLad: Starting refresh');
     if (!this.view) {
+      console.log('TimeLad: No view available, aborting refresh');
       return;
     }
 
     this.gitService.clearCache();
     this.view.webview.html = this.getScanningTemplate();
+    console.log('TimeLad: Set scanning template');
 
     try {
+      console.log('TimeLad: Checking if Git is installed');
       const gitInstalled = await this.gitService.isGitInstalled();
 
       if (!gitInstalled) {
+        console.log('TimeLad: Git not installed');
         await this.notificationService.showGitNotInstalledMessage();
         this.view.webview.html = this.getGitNotInstalledTemplate();
         return;
       }
 
+      console.log('TimeLad: Git installed, checking for repository');
       const hasRepo = await this.gitService.hasRepositoryRobust();
 
       if (!hasRepo) {
@@ -581,28 +732,30 @@ class GitHistoryWebviewProvider {
       this.paginationState.hasMore = paginatedResult.hasMore;
       this.paginationState.totalCount = paginatedResult.totalCount;
 
+      const paginationInfo: PaginationInfo = {
+        hasMore: this.paginationState.hasMore,
+        totalCount: this.paginationState.totalCount,
+        showingCount: this.commits.length
+      };
+
       this.view.webview.html = getSidebarTemplate(
         this.commits, 
         this.uncommittedChanges, 
-        {
-          hasMore: this.paginationState.hasMore,
-          totalCount: this.paginationState.totalCount,
-          showingCount: this.commits.length
-        }
+        paginationInfo
       );
     } catch (error) {
       console.error(`${constants.EXTENSION_NAME}: Error refreshing commits:`, error);
 
-      this.view.webview.html = this.getErrorTemplate(error.message);
+      this.view.webview.html = this.getErrorTemplate((error as Error).message);
     }
   }
 
   /**
    * Get loading template
-   * @param {string} message Loading message
-   * @returns {string} HTML template
+   * @param message Loading message
+   * @returns HTML template
    */
-  getLoadingTemplate(message = "Loading...") {
+  private getLoadingTemplate(message: string = "Loading..."): string {
     return `
       <!DOCTYPE html>
       <html>
@@ -652,11 +805,11 @@ class GitHistoryWebviewProvider {
 
   /**
    * Get success template
-   * @param {string} title Success title
-   * @param {string} subtitle Optional subtitle
-   * @returns {string} HTML template
+   * @param title Success title
+   * @param subtitle Optional subtitle
+   * @returns HTML template
    */
-  getSuccessTemplate(title, subtitle = "") {
+  private getSuccessTemplate(title: string, subtitle: string = ""): string {
     return `
       <!DOCTYPE html>
       <html>
@@ -738,10 +891,10 @@ class GitHistoryWebviewProvider {
 
   /**
    * Get error template
-   * @param {string} errorMessage Error message
-   * @returns {string} HTML template
+   * @param errorMessage Error message
+   * @returns HTML template
    */
-  getErrorTemplate(errorMessage) {
+  private getErrorTemplate(errorMessage: string): string {
     return `
       <!DOCTYPE html>
       <html>
@@ -791,9 +944,9 @@ class GitHistoryWebviewProvider {
 
   /**
    * Get template for when git is not installed
-   * @returns {string} HTML template
+   * @returns HTML template
    */
-  getGitNotInstalledTemplate() {
+  private getGitNotInstalledTemplate(): string {
     return `
       <!DOCTYPE html>
       <html lang="en">
@@ -883,9 +1036,9 @@ class GitHistoryWebviewProvider {
 
   /**
    * Get template for when no repository exists
-   * @returns {string} HTML template
+   * @returns HTML template
    */
-  getNoRepositoryTemplate() {
+  private getNoRepositoryTemplate(): string {
     return `
       <!DOCTYPE html>
       <html lang="en">
@@ -986,9 +1139,9 @@ class GitHistoryWebviewProvider {
 
   /**
    * Get template for the scanning state
-   * @returns {string} HTML template
+   * @returns HTML template
    */
-  getScanningTemplate() {
+  private getScanningTemplate(): string {
     return `
       <!DOCTYPE html>
       <html lang="en">
@@ -1076,7 +1229,7 @@ class GitHistoryWebviewProvider {
   /**
    * Dispose of resources
    */
-  dispose() {
+  dispose(): void {
     this.isDisposed = true;
     if (this.repositoryWatcher) {
       this.repositoryWatcher.dispose();
@@ -1085,5 +1238,3 @@ class GitHistoryWebviewProvider {
     console.log(`${constants.EXTENSION_NAME}: GitHistoryWebviewProvider disposed`);
   }
 }
-
-module.exports = GitHistoryWebviewProvider;

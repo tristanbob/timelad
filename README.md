@@ -11,7 +11,7 @@ TimeLad provides an enhanced Git experience with these key features:
 - **Interactive Git History**: Beautiful timeline view of your commit history with visual diffs
 - **Safe Version Restoration**: Travel back to any previous version without losing history
 - **Uncommitted Changes Detection**: See all your uncommitted changes at a glance
-- **AI-Generated Commit Messages**: Intelligent commit message suggestions powered by AI
+- **Auto-Generated Commit Messages**: Intelligent commit message suggestions using conventional commit patterns
 
 ### Easy Git Management
 
@@ -29,9 +29,6 @@ TimeLad provides an enhanced Git experience with these key features:
 ## Usage
 
 1. Open any folder in VS Code
-2. Access TimeLad commands:
-   - Through the Command Palette (Ctrl+Shift+P)
-   - Search for "TimeLad: Show Git Info" or "TimeLad: Show Git History"
    - Use the TimeLad sidebar to view Git history with restore functionality
    - If no Git repository exists, TimeLad will offer to set up version tracking for you
 
@@ -39,16 +36,13 @@ TimeLad provides an enhanced Git experience with these key features:
 
 - **Safe Time Travel**: Click "⏮️ Restore Version" on any commit to safely restore your project to that state
 - **No Data Loss**: Creates a new commit with the restored state, preserving all history
-- **Automatic Stashing**: Automatically handles uncommitted changes by offering to stash them
 - **Version Tracking**: Each restore creates a new version number, making it easy to track changes
 
 ### Set Up Version Tracking Feature
 
 - **Beginner-Friendly**: Uses simple, non-technical language to explain what version tracking means
-- **Automatic Setup**: Creates a Git repository with sensible defaults
-- **First Commit**: Automatically creates an initial commit to get you started
-- **Helpful Analogies**: Explains version tracking as an "automatic Save Game feature for your code"
 - **Smart Detection**: Automatically detects when no repository exists and offers to create one
+- **First Commit**: Automatically creates an initial commit to get you started
 
 ## Requirements
 
@@ -61,20 +55,119 @@ This extension contributes the following settings:
 
 - `timelad.githubToken`: GitHub Personal Access Token for repository operations (default: empty string)
 
-### Version Information
+## Technical Details
 
-- **Hover for Details**: Hover over any version number (like "v1", "v2") to see the full Git hash
-- **One-Click Copy**: Click on any version number to copy the Git hash to your clipboard
-- **Commit Insights**: View detailed information about each commit, including author, date, and changes
+### How TimeLad Uses Git
 
-### AI-Powered Commits
+TimeLad is built on top of Git and follows Git best practices to ensure data safety and compatibility with existing Git workflows:
 
-TimeLad can generate meaningful commit messages for you:
+#### Core Git Operations
 
-- **Smart Analysis**: Examines your changes to suggest relevant commit messages
-- **VS Code AI Integration**: Uses VS Code's built-in AI when available
-- **Fallback Logic**: Provides sensible defaults even without AI capabilities
-- **Customizable**: Tweak the generated messages to better fit your needs
+**Repository Detection**:
+- Uses multi-layered approach: filesystem scanning, VS Code Git API, and direct Git commands
+- Automatically detects `.git` directories and Git repositories
+- Integrates with VS Code's built-in Git extension when available
+
+**Commit History Retrieval**:
+```bash
+git log --oneline --format="%H|%an|%ad|%s" --date=short
+```
+- Fetches commit history with custom formatting for optimal parsing
+- Implements progressive loading for large repositories
+- Caches results for improved performance
+
+**Safe Version Restoration**:
+```bash
+# TimeLad uses advanced Git plumbing commands for safe restoration:
+git read-tree <commit-hash>           # Load commit tree into index
+git write-tree                        # Create new tree object
+git commit-tree <tree> -p <parent>    # Create new commit object
+git update-ref refs/heads/<branch>    # Update branch pointer
+git reset --hard                      # Update working directory
+
+# This creates a new commit with restored content while preserving history
+# The process:
+# 1. Warns about uncommitted changes and offers to discard them
+# 2. Uses git plumbing commands to create a new commit with old content
+# 3. Updates the branch to point to the new commit
+# 4. Updates working directory to match the new commit
+```
+
+**Uncommitted Changes Detection**:
+```bash
+git status --porcelain
+git diff --name-status
+```
+- Monitors working directory for changes
+- Provides file-level status information
+- Offers safe stashing before operations
+
+#### Safety-First Architecture
+
+**No History Rewriting**:
+- Never uses `git rebase` or other history-altering commands
+- Uses `git reset --hard` only after creating new commits (safe operation)
+- All operations create new commits, preserving complete audit trail
+
+**Automatic Backup Handling**:
+```bash
+# Before destructive operations:
+git stash push -m "TimeLad auto-backup: <timestamp>"
+# After restoration:
+git stash pop  # (if user chooses to restore changes)
+```
+
+**Repository Initialization**:
+```bash
+git init
+git config user.name "<detected-or-default-name>"
+git config user.email "<detected-or-default-email>"
+git add .
+git commit -m "Initial commit: Set up version tracking"
+```
+
+#### Advanced Features
+
+**Smart Commit Message Generation**:
+- Analyzes file changes using `git diff --name-status`
+- Applies rule-based logic for conventional commit patterns
+- Supports custom commit message templates
+
+**Integration with VS Code Git**:
+- Leverages VS Code's Git extension API when available
+- Falls back to direct Git command execution
+- Maintains compatibility with other Git tools and workflows
+
+**Progressive Loading**:
+- Implements pagination for large commit histories
+- Uses efficient Git commands with `--skip` and `--max-count`
+- Provides smooth UX even with repositories containing thousands of commits
+
+#### Git Command Reference
+
+TimeLad uses these Git commands safely:
+- `git status` - Check repository state
+- `git log` - Retrieve commit history  
+- `git show` - Display commit details
+- `git diff` - Compare changes
+- `git read-tree` - Load commit trees into index
+- `git write-tree` - Create tree objects
+- `git commit-tree` - Create commit objects
+- `git update-ref` - Update branch references
+- `git reset --hard` - Update working directory (after creating commits)
+- `git add` - Stage changes
+- `git commit` - Create new commits
+- `git stash` - Backup uncommitted work
+- `git init` - Initialize repositories
+- `git clean` - Remove untracked files
+
+**Commands TimeLad NEVER uses**:
+- `git rebase` - Would rewrite history
+- `git push --force` - Would overwrite remote history
+- `git filter-branch` - Would rewrite history
+- Any other history-destructive operations
+
+This approach ensures TimeLad can be safely used alongside any existing Git workflow without risk of data loss or history corruption.
 
 ## Known Issues
 
@@ -84,7 +177,7 @@ Please report issues on the GitHub repository.
 
 ### 0.2.0
 
-**Latest Stable Release** - TimeLad is now production-ready!
+**Latest Beta Release** - TimeLad continues to improve with regular updates!
 
 ### What's New
 
@@ -97,7 +190,7 @@ Please report issues on the GitHub repository.
 ### Recent Features
 
 - **Uncommitted Changes Detection**: View all uncommitted changes in the sidebar
-- **AI-Generated Commit Messages**: Smart commit message suggestions
+- **Auto-Generated Commit Messages**: Smart commit message suggestions using file analysis
 - **One-Click Saves**: Save changes with intelligent commit messages
 - **Safe Version Restoration**: Travel back to any version without losing history
 - **Visual File Status**: Color-coded indicators for file changes

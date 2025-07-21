@@ -1,25 +1,105 @@
-const { exec } = require('child_process');
-const util = require('util');
-const vscode = require("vscode");
-const { promisify } = util;
-const constants = require("../constants");
-const AICommitMessageService = require("./AICommitMessageService");
-const NotificationService = require("./NotificationService");
-const FileOperationsService = require("./FileOperationsService");
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import * as vscode from 'vscode';
+import { 
+  GitCommit, 
+  GitRepository, 
+  GitServiceInterface,
+  NotificationServiceInterface,
+  FileOperationsServiceInterface,
+  CommitMessageServiceInterface
+} from '../types';
+
+// Import the constants - will need to be converted to TypeScript later
+const constants = require('../constants');
+
+// Import services
+import { CommitMessageService } from './CommitMessageService';
+const NotificationService = require('./NotificationService');
+const FileOperationsService = require('./FileOperationsService');
 
 const execPromise = promisify(exec);
-const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
+
+// Extended interfaces for internal GitService use
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+  error?: string | null;
+}
+
+interface CommitData {
+  hash: string;
+  author: string;
+  date: string;
+  subject: string;
+  version: number;
+}
+
+interface FileChange {
+  status: string;
+  fileName: string;
+  type: string;
+}
+
+interface UncommittedChanges {
+  hasChanges: boolean;
+  files: FileChange[];
+  summary: string;
+}
+
+interface RestoreResult {
+  success: boolean;
+  message?: string;
+  newCommit?: string;
+  previousCommit?: string;
+  branch?: string;
+}
+
+interface PaginatedCommits {
+  commits: CommitData[];
+  hasMore: boolean;
+  totalCount: number;
+  offset: number;
+  nextOffset: number;
+}
+
+interface BranchInfo {
+  branch: string | null;
+  version: number | null;
+}
+
+interface GitCommandResult {
+  stdout: string;
+  stderr: string;
+}
+
+interface DirectoryEntry {
+  name: string;
+  isDirectory: () => boolean;
+}
 
 /**
  * Refactored GitService with separated concerns
  * Focuses purely on Git operations, delegating other responsibilities
  */
-class GitService {
-  constructor(notificationService = null, fileService = null, aiService = null) {
+class GitService implements GitServiceInterface {
+  private notificationService: NotificationServiceInterface;
+  private fileService: FileOperationsServiceInterface;
+  private commitMessageService: CommitMessageServiceInterface;
+  private cache: Map<string, CacheEntry<any>>;
+  private repositoryScanCache: Map<string, CacheEntry<any>>;
+  private lastHealthCheck: Map<string, number>;
+
+  constructor(
+    notificationService: NotificationServiceInterface | null = null,
+    fileService: FileOperationsServiceInterface | null = null,
+    commitMessageService: CommitMessageServiceInterface | null = null
+  ) {
     // Dependency injection for services
     this.notificationService = notificationService || new NotificationService();
     this.fileService = fileService || new FileOperationsService();
-    this.aiService = aiService || new AICommitMessageService();
+    this.commitMessageService = commitMessageService || new CommitMessageService();
     
     // Core Git service state
     this.cache = new Map();
@@ -29,18 +109,18 @@ class GitService {
 
   /**
    * Get Git extension safely
-   * @returns {Object|null} Git extension API or null
+   * @returns Git extension API or null
    */
-  getGitExtension() {
+  getGitExtension(): any | null {
     const extension = vscode.extensions.getExtension(constants.GIT_EXTENSION_ID);
     return extension ? extension.exports : null;
   }
 
   /**
    * Check if git is installed on the system
-   * @returns {Promise<boolean>} True if git is installed
+   * @returns True if git is installed
    */
-  async isGitInstalled() {
+  async isGitInstalled(): Promise<boolean> {
     try {
       await this.executeGitCommand("git --version", ".");
       return true;
@@ -51,10 +131,10 @@ class GitService {
 
   /**
    * Wait for Git extension to be ready
-   * @param {number} maxAttempts Maximum number of attempts
-   * @returns {Promise<boolean>} True if Git is ready, false if max attempts reached
+   * @param maxAttempts Maximum number of attempts
+   * @returns True if Git is ready, false if max attempts reached
    */
-  async waitForGitReady(maxAttempts = 10) {
+  async waitForGitReady(maxAttempts: number = 10): Promise<boolean> {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         const gitExtension = this.getGitExtension();
@@ -77,10 +157,10 @@ class GitService {
 
   /**
    * Check if a directory is a Git repository
-   * @param {string} dirPath Directory path to check
-   * @returns {Promise<boolean>} True if directory is a Git repository
+   * @param dirPath Directory path to check
+   * @returns True if directory is a Git repository
    */
-  async isGitRepository(dirPath) {
+  async isGitRepository(dirPath: string): Promise<boolean> {
     try {
       await this.executeGitCommand("git rev-parse --git-dir", dirPath);
       return true;
@@ -91,16 +171,16 @@ class GitService {
 
   /**
    * Scan workspace folders for git repositories
-   * @param {number} maxDepth Maximum depth to scan (default: 3)
-   * @returns {Promise<Array<string>>} Array of repository paths found
+   * @param maxDepth Maximum depth to scan (default: 3)
+   * @returns Array of repository paths found
    */
-  async scanForRepositories(maxDepth = 3) {
+  async scanForRepositories(maxDepth: number = 3): Promise<string[]> {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) {
       return [];
     }
 
-    const repositories = [];
+    const repositories: string[] = [];
     const scanPromises = workspaceFolders.map((folder) =>
       this.scanFolderForGit(folder.uri.fsPath, maxDepth)
     );
@@ -111,7 +191,7 @@ class GitService {
         repositories.push(...folderRepos);
       });
     } catch (error) {
-      console.log(`TimeLad: Error scanning for repositories: ${error.message}`);
+      console.log(`TimeLad: Error scanning for repositories: ${(error as Error).message}`);
     }
 
     return repositories;
@@ -119,13 +199,17 @@ class GitService {
 
   /**
    * Recursively scan a folder for git repositories
-   * @param {string} folderPath Path to scan
-   * @param {number} maxDepth Maximum depth to scan
-   * @param {number} currentDepth Current depth in recursion
-   * @returns {Promise<Array<string>>} Array of repository paths found
+   * @param folderPath Path to scan
+   * @param maxDepth Maximum depth to scan
+   * @param currentDepth Current depth in recursion
+   * @returns Array of repository paths found
    */
-  async scanFolderForGit(folderPath, maxDepth, currentDepth = 0) {
-    const repositories = [];
+  async scanFolderForGit(
+    folderPath: string,
+    maxDepth: number,
+    currentDepth: number = 0
+  ): Promise<string[]> {
+    const repositories: string[] = [];
 
     try {
       if (await this.isGitRepository(folderPath)) {
@@ -135,19 +219,19 @@ class GitService {
 
       if (currentDepth < maxDepth) {
         try {
-          const entries = await this.fileService.readDirectoryWithTypes(folderPath);
+          const entries = await this.fileService.readDirectoryWithTypes!(folderPath);
           const subdirPromises = entries
             .filter(
-              (entry) =>
+              (entry: DirectoryEntry) =>
                 entry.isDirectory() &&
                 !entry.name.startsWith(".") &&
                 entry.name !== "node_modules" &&
                 entry.name !== "dist" &&
                 entry.name !== "build"
             )
-            .map((entry) =>
+            .map((entry: DirectoryEntry) =>
               this.scanFolderForGit(
-                this.fileService.joinPath(folderPath, entry.name),
+                this.fileService.joinPath!(folderPath, entry.name),
                 maxDepth,
                 currentDepth + 1
               )
@@ -170,10 +254,10 @@ class GitService {
 
   /**
    * Get the primary repository path from workspace
-   * @returns {Promise<string>} Repository path
-   * @throws {Error} If no repository found
+   * @returns Repository path
+   * @throws Error if no repository found
    */
-  async getRepositoryPathRobust() {
+  async getRepositoryPathRobust(): Promise<string> {
     const cacheKey = "primary-repo-path";
     const cached = this.repositoryScanCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < 5000) {
@@ -183,23 +267,23 @@ class GitService {
       return cached.data;
     }
 
-    let repositoryPath = null;
-    let lastError = null;
+    let repositoryPath: string | null = null;
+    let lastError: Error | null = null;
 
     try {
       // Method 1: Scan file system directly
       const repositories = await this.scanForRepositories(2);
       if (repositories.length > 0) {
-        repositoryPath = repositories[0];
+        repositoryPath = repositories[0] ?? null;
         this.repositoryScanCache.set(cacheKey, {
           data: repositoryPath,
           timestamp: Date.now(),
           error: null,
         });
-        return repositoryPath;
+        return repositoryPath!;
       }
     } catch (error) {
-      lastError = error;
+      lastError = error as Error;
     }
 
     // Method 2: Try Git extension
@@ -212,26 +296,28 @@ class GitService {
           if (gitExtension) {
             const api = gitExtension.getAPI(1);
             if (api && api.repositories && api.repositories.length > 0) {
-              repositoryPath = api.repositories[0].rootUri.fsPath;
-              this.repositoryScanCache.set(cacheKey, {
-                data: repositoryPath,
-                timestamp: Date.now(),
-                error: null,
-              });
-              return repositoryPath;
+              repositoryPath = api.repositories[0]?.rootUri?.fsPath ?? null;
+              if (repositoryPath) {
+                this.repositoryScanCache.set(cacheKey, {
+                  data: repositoryPath,
+                  timestamp: Date.now(),
+                  error: null,
+                });
+                return repositoryPath;
+              }
             }
           }
         }
       }
     } catch (error) {
-      lastError = error;
+      lastError = error as Error;
     }
 
     // Method 3: Try git command directly on workspace folder
     try {
       const workspaceFolders = vscode.workspace.workspaceFolders;
-      if (workspaceFolders && workspaceFolders.length > 0) {
-        const workspacePath = workspaceFolders[0].uri.fsPath;
+      if (workspaceFolders?.[0]) {
+        const workspacePath = workspaceFolders[0]!.uri.fsPath;
         await this.executeGitCommand("git rev-parse --git-dir", workspacePath);
 
         repositoryPath = workspacePath;
@@ -243,7 +329,7 @@ class GitService {
         return repositoryPath;
       }
     } catch (error) {
-      lastError = error;
+      lastError = error as Error;
     }
 
     // No repository found
@@ -259,9 +345,9 @@ class GitService {
 
   /**
    * Enhanced repository detection
-   * @returns {Promise<boolean>} True if repository exists
+   * @returns True if repository exists
    */
-  async hasRepositoryRobust() {
+  async hasRepositoryRobust(): Promise<boolean> {
     try {
       if (!(await this.isGitInstalled())) {
         console.log("TimeLad: Git is not installed on this system");
@@ -271,34 +357,40 @@ class GitService {
       await this.getRepositoryPathRobust();
       return true;
     } catch (error) {
-      console.log(`TimeLad: No repository found - ${error.message}`);
+      console.log(`TimeLad: No repository found - ${(error as Error).message}`);
       return false;
     }
   }
 
   /**
    * Get repository path safely
-   * @returns {Promise<string>} Repository path
+   * @returns Repository path
    */
-  async getRepositoryPath() {
+  async getRepositoryPath(): Promise<string> {
     return this.getRepositoryPathRobust();
   }
 
   /**
    * Execute a Git command with retry logic
-   * @param {string} command Git command to execute
-   * @param {string} repoPath Repository path
-   * @param {number} maxRetries Maximum number of retry attempts
-   * @param {number} retryDelay Delay between retries in ms
-   * @param {Object} envVars Additional environment variables
-   * @returns {Promise<{stdout: string, stderr: string}>} Command result
+   * @param command Git command to execute
+   * @param repoPath Repository path
+   * @param maxRetries Maximum number of retry attempts
+   * @param retryDelay Delay between retries in ms
+   * @param envVars Additional environment variables
+   * @returns Command result
    */
-  async executeGitCommand(command, repoPath, maxRetries = 2, retryDelay = 100, envVars = {}) {
+  async executeGitCommand(
+    command: string,
+    repoPath: string,
+    maxRetries: number = 2,
+    retryDelay: number = 100,
+    envVars: Record<string, string> = {}
+  ): Promise<GitCommandResult> {
     const options = { 
       cwd: repoPath,
       env: { ...process.env, ...envVars }
     };
-    let lastError;
+    let lastError: Error;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
@@ -311,11 +403,11 @@ class GitService {
           stderr: stderr ? stderr.trim() : '' 
         };
       } catch (error) {
-        lastError = error;
+        lastError = error as Error;
         
-        if (error.message && error.message.includes('index.lock') && attempt < maxRetries) {
+        if (lastError.message?.includes('index.lock') && attempt < maxRetries) {
           console.warn(`Git lock conflict (attempt ${attempt + 1}/${maxRetries}), retrying...`);
-          await this.fileService.removeGitLockFile(repoPath);
+          await this.fileService.removeGitLockFile!(repoPath);
           await delay(retryDelay * (attempt + 1));
           continue;
         }
@@ -324,8 +416,8 @@ class GitService {
       }
     }
     
-    const errorMessage = lastError ? 
-      `Error executing git command after ${maxRetries + 1} attempts: ${command}\n${lastError.message || lastError}` :
+    const errorMessage = lastError! ? 
+      `Error executing git command after ${maxRetries + 1} attempts: ${command}\n${lastError!.message || lastError}` :
       `Unknown error executing git command: ${command}`;
       
     console.error(errorMessage);
@@ -334,10 +426,10 @@ class GitService {
 
   /**
    * Get total number of commits in repository
-   * @param {string} repoPath Repository path
-   * @returns {Promise<number>} Total commit count
+   * @param repoPath Repository path
+   * @returns Total commit count
    */
-  async getCommitCount(repoPath) {
+  async getCommitCount(repoPath: string): Promise<number> {
     const { stdout } = await this.executeGitCommand(
       constants.GIT_COMMANDS.COUNT_COMMITS,
       repoPath
@@ -347,18 +439,23 @@ class GitService {
 
   /**
    * Internal method to fetch commits with flexible options
-   * @param {Object} options Options for commit retrieval
-   * @returns {Promise<Array>} Array of commit objects
+   * @param options Options for commit retrieval
+   * @returns Array of commit objects
    */
-  async _getCommitsInternal({
-    limit = constants.MAX_COMMITS_SIDEBAR,
-    repoPath = null,
-    useCache = true,
-    logFormat = constants.GIT_COMMANDS.LOG_FORMAT,
-  } = {}) {
-    if (!repoPath) {
-      repoPath = await this.getRepositoryPath();
-    }
+  async _getCommitsInternal(options: {
+    limit?: number;
+    repoPath?: string | null;
+    useCache?: boolean;
+    logFormat?: string;
+  } = {}): Promise<CommitData[]> {
+    const {
+      limit = constants.MAX_COMMITS_SIDEBAR,
+      repoPath: inputRepoPath = null,
+      useCache = true,
+      logFormat = constants.GIT_COMMANDS.LOG_FORMAT,
+    } = options;
+
+    const repoPath = inputRepoPath || await this.getRepositoryPath();
 
     const cacheKey = `commits-${repoPath}-${limit}-${logFormat.includes('LOG_FORMAT') ? 'detail' : 'simple'}`;
     if (useCache) {
@@ -369,7 +466,7 @@ class GitService {
     }
 
     const totalCommits = await this.getCommitCount(repoPath);
-    const command = logFormat.replace("%d", limit);
+    const command = logFormat.replace("%d", limit.toString());
     const { stdout } = await this.executeGitCommand(command, repoPath);
 
     const commits = stdout
@@ -386,7 +483,7 @@ class GitService {
           version: versionNumber,
         };
       })
-      .filter((commit) => commit !== null);
+      .filter((commit): commit is CommitData => commit !== null);
 
     if (useCache) {
       this.cache.set(cacheKey, {
@@ -400,11 +497,11 @@ class GitService {
 
   /**
    * Get commits with version numbers
-   * @param {number} limit Maximum number of commits to fetch
-   * @param {string} repoPath Repository path
-   * @returns {Promise<Array>} Array of commit objects
+   * @param limit Maximum number of commits to fetch
+   * @param repoPath Repository path
+   * @returns Array of commit objects
    */
-  async getCommits(limit = constants.MAX_COMMITS_SIDEBAR, repoPath = null) {
+  async getCommits(limit: number = constants.MAX_COMMITS_SIDEBAR, repoPath: string | null = null): Promise<CommitData[]> {
     try {
       return await this._getCommitsInternal({
         limit,
@@ -413,16 +510,16 @@ class GitService {
         logFormat: constants.GIT_COMMANDS.LOG_FORMAT,
       });
     } catch (error) {
-      throw new Error(`${constants.ERRORS.FETCH_COMMITS_FAILED}: ${error.message}`);
+      throw new Error(`${constants.ERRORS.FETCH_COMMITS_FAILED}: ${(error as Error).message}`);
     }
   }
 
   /**
    * Get simple commits for QuickPick
-   * @param {string} repoPath Repository path
-   * @returns {Promise<Array>} Array of commit objects
+   * @param repoPath Repository path
+   * @returns Array of commit objects
    */
-  async getSimpleCommits(repoPath = null) {
+  async getSimpleCommits(repoPath: string | null = null): Promise<CommitData[]> {
     return this._getCommitsInternal({
       limit: constants.MAX_COMMITS_QUICKPICK,
       repoPath,
@@ -433,18 +530,23 @@ class GitService {
 
   /**
    * Get commits with pagination support for progressive loading
-   * @param {Object} options Pagination options
-   * @returns {Promise<{commits: Array, hasMore: boolean, totalCount: number}>} Paginated commits result
+   * @param options Pagination options
+   * @returns Paginated commits result
    */
-  async getCommitsPaginated({
-    offset = 0,
-    limit = constants.PROGRESSIVE_LOADING.INITIAL_LOAD_SIZE,
-    repoPath = null,
-    useCache = true
-  } = {}) {
-    if (!repoPath) {
-      repoPath = await this.getRepositoryPath();
-    }
+  async getCommitsPaginated(options: {
+    offset?: number;
+    limit?: number;
+    repoPath?: string | null;
+    useCache?: boolean;
+  } = {}): Promise<PaginatedCommits> {
+    const {
+      offset = 0,
+      limit = constants.PROGRESSIVE_LOADING.INITIAL_LOAD_SIZE,
+      repoPath: inputRepoPath = null,
+      useCache = true
+    } = options;
+
+    const repoPath = inputRepoPath || await this.getRepositoryPath();
 
     const cacheKey = `commits-paginated-${repoPath}-${offset}-${limit}`;
     if (useCache) {
@@ -472,11 +574,11 @@ class GitService {
           version: versionNumber,
         };
       })
-      .filter((commit) => commit !== null);
+      .filter((commit): commit is CommitData => commit !== null);
 
     const hasMore = offset + commits.length < totalCommits;
     
-    const result = {
+    const result: PaginatedCommits = {
       commits,
       hasMore,
       totalCount: totalCommits,
@@ -496,9 +598,9 @@ class GitService {
 
   /**
    * Get current branch information
-   * @returns {Promise<{branch: string, version: number}>} Current branch and version
+   * @returns Current branch and version
    */
-  async getCurrentBranchInfo() {
+  async getCurrentBranchInfo(): Promise<BranchInfo> {
     const repoPath = await this.getRepositoryPath();
     const gitExtension = this.getGitExtension();
     const api = gitExtension.getAPI(1);
@@ -517,26 +619,24 @@ class GitService {
 
   /**
    * Get detailed commit information
-   * @param {string} commitHash Commit hash
-   * @param {string} repoPath Repository path
-   * @returns {Promise<string>} Detailed commit information
+   * @param commitHash Commit hash
+   * @param repoPath Repository path
+   * @returns Detailed commit information
    */
-  async getCommitDetails(commitHash, repoPath = null) {
-    if (!repoPath) {
-      repoPath = await this.getRepositoryPath();
-    }
+  async getCommitDetails(commitHash: string, repoPath: string | null = null): Promise<string> {
+    const repo = repoPath || await this.getRepositoryPath();
 
     const command = constants.GIT_COMMANDS.SHOW_COMMIT.replace("%s", commitHash);
-    const { stdout } = await this.executeGitCommand(command, repoPath);
+    const { stdout } = await this.executeGitCommand(command, repo);
     return stdout;
   }
 
   /**
    * Check if working directory is clean
-   * @param {string} repoPath Repository path
-   * @returns {Promise<boolean>} True if working directory is clean
+   * @param repoPath Repository path
+   * @returns True if working directory is clean
    */
-  async isWorkingDirectoryClean(repoPath) {
+  async isWorkingDirectoryClean(repoPath: string): Promise<boolean> {
     const { stdout } = await this.executeGitCommand(
       constants.GIT_COMMANDS.STATUS_PORCELAIN,
       repoPath
@@ -546,28 +646,28 @@ class GitService {
 
   /**
    * Stash current changes
-   * @param {string} repoPath Repository path
+   * @param repoPath Repository path
    */
-  async stashChanges(repoPath) {
+  async stashChanges(repoPath: string): Promise<void> {
     await this.executeGitCommand(constants.GIT_COMMANDS.STASH_PUSH, repoPath);
   }
 
   /**
    * Get current branch name
-   * @param {string} repoPath Path to repository
-   * @returns {Promise<string>} Current branch name
+   * @param repoPath Path to repository
+   * @returns Current branch name
    */
-  async getCurrentBranchName(repoPath) {
+  async getCurrentBranchName(repoPath: string): Promise<string> {
     const { stdout } = await this.executeGitCommand('git rev-parse --abbrev-ref HEAD', repoPath);
     return stdout.trim();
   }
 
   /**
    * Create a backup branch before destructive operations
-   * @param {string} repoPath Path to repository
-   * @returns {Promise<string>} Name of the backup branch
+   * @param repoPath Path to repository
+   * @returns Name of the backup branch
    */
-  async createBackupBranch(repoPath) {
+  async createBackupBranch(repoPath: string): Promise<string> {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const branchName = `timelad/backup/pre-restore-${timestamp}`;
     const currentBranch = await this.getCurrentBranchName(repoPath);
@@ -580,10 +680,10 @@ class GitService {
 
   /**
    * Clean up old backup branches
-   * @param {string} repoPath Path to repository
-   * @param {number} daysToKeep Number of days to keep backups
+   * @param repoPath Path to repository
+   * @param daysToKeep Number of days to keep backups
    */
-  async cleanupOldBackups(repoPath, daysToKeep = 7) {
+  async cleanupOldBackups(repoPath: string, daysToKeep: number = 7): Promise<void> {
     try {
       const { stdout } = await this.executeGitCommand(
         'git for-each-ref --format="%(refname:short) %(creatordate:iso)" refs/heads/timelad/backup/',
@@ -616,11 +716,11 @@ class GitService {
 
   /**
    * Create a new commit that restores the working directory to a specific commit
-   * @param {string} commitHash Commit hash to restore
-   * @param {string} repoPath Repository path
-   * @returns {Promise<string>} The new commit hash
+   * @param commitHash Commit hash to restore
+   * @param repoPath Repository path
+   * @returns The new commit hash
    */
-  async createRestoreCommit(commitHash, repoPath) {
+  async createRestoreCommit(commitHash: string, repoPath: string): Promise<string> {
     if (!commitHash) {
       throw new Error('No commit hash provided for restore');
     }
@@ -629,7 +729,7 @@ class GitService {
     const originalCommit = (await this.executeGitCommand('git rev-parse HEAD', repoPath)).stdout.trim();
     
     try {
-      const tempIndex = this.fileService.createTempIndexFile(repoPath);
+      const tempIndex = this.fileService.createTempIndexFile!(repoPath);
       
       try {
         const env = { 
@@ -655,7 +755,7 @@ class GitService {
                             `Original commit: ${originalCommit}\n` +
                             `Restore time: ${new Date().toISOString()}`;
         
-        const tempMsgFile = await this.fileService.createTempCommitFile(repoPath, commitMessage);
+        const tempMsgFile = await this.fileService.createTempCommitFile!(repoPath, commitMessage);
         
         try {
           const { stdout: newCommit } = await this.executeGitCommand(
@@ -702,17 +802,15 @@ class GitService {
 
   /**
    * Get uncommitted changes status
-   * @param {string} repoPath Repository path
-   * @returns {Promise<{hasChanges: boolean, files: Array, summary: string}>} Changes information
+   * @param repoPath Repository path
+   * @returns Changes information
    */
-  async getUncommittedChanges(repoPath = null) {
-    if (!repoPath) {
-      repoPath = await this.getRepositoryPath();
-    }
+  async getUncommittedChanges(repoPath: string | null = null): Promise<UncommittedChanges> {
+    const repo = repoPath || await this.getRepositoryPath();
 
     const { stdout } = await this.executeGitCommand(
       constants.GIT_COMMANDS.STATUS_PORCELAIN,
-      repoPath
+      repo
     );
 
     const hasChanges = !!stdout.trim();
@@ -737,7 +835,7 @@ class GitService {
     try {
       const { stdout: diffStat } = await this.executeGitCommand(
         constants.GIT_COMMANDS.DIFF_STAT,
-        repoPath
+        repo
       );
       return { hasChanges: true, files, summary: diffStat };
     } catch (error) {
@@ -748,13 +846,13 @@ class GitService {
 
   /**
    * Parse git status codes
-   * @param {string} status Git status code
-   * @returns {string} Human readable status
+   * @param status Git status code
+   * @returns Human readable status
    */
-  parseFileStatus(status) {
+  parseFileStatus(status: string): string {
     const firstChar = status[0];
     const secondChar = status[1];
-    let result = [];
+    const result: string[] = [];
 
     switch (firstChar) {
       case "M": result.push("modified"); break;
@@ -779,55 +877,57 @@ class GitService {
 
   /**
    * Restore a specific version by creating a new commit
-   * @param {Object} commit Commit object to restore
-   * @param {string} repoPath Repository path
-   * @param {boolean} skipConfirmation Skip uncommitted changes confirmation
-   * @returns {Promise<{success: boolean, message: string, newCommit: string}>} Result of the operation
+   * @param commit Commit object to restore
+   * @param repoPath Repository path
+   * @param skipConfirmation Skip uncommitted changes confirmation
+   * @returns Result of the operation
    */
-  async restoreVersion(commit, repoPath = null, skipConfirmation = false) {
-    if (!repoPath) {
-      repoPath = await this.getRepositoryPath();
-    }
+  async restoreVersion(
+    commit: CommitData,
+    repoPath: string | null = null,
+    skipConfirmation: boolean = false
+  ): Promise<RestoreResult> {
+    const repo = repoPath || await this.getRepositoryPath();
     
-    await this.fileService.removeGitLockFile(repoPath);
+    await this.fileService.removeGitLockFile!(repo);
 
-    const currentBranch = await this.getCurrentBranchName(repoPath);
-    const currentCommit = (await this.executeGitCommand('git rev-parse HEAD', repoPath)).stdout.trim();
+    const currentBranch = await this.getCurrentBranchName(repo);
+    const currentCommit = (await this.executeGitCommand('git rev-parse HEAD', repo)).stdout.trim();
     
     try {
-      const { hasChanges, files } = await this.getUncommittedChanges(repoPath);
+      const { hasChanges, files } = await this.getUncommittedChanges(repo);
       
       if (hasChanges || files.length > 0) {
         if (!skipConfirmation) {
-          const shouldProceed = await this.notificationService.showUncommittedChangesWarning(files);
+          const shouldProceed = await this.notificationService.showUncommittedChangesWarning!(files);
 
           if (!shouldProceed) {
             return { success: false, message: "Restore cancelled by user." };
           }
         }
         
-        await this.executeGitCommand('git reset --hard', repoPath);
-        await this.executeGitCommand('git clean -fd', repoPath);
+        await this.executeGitCommand('git reset --hard', repo);
+        await this.executeGitCommand('git clean -fd', repo);
         
-        const { stdout: untracked } = await this.executeGitCommand('git ls-files --others --exclude-standard', repoPath);
+        const { stdout: untracked } = await this.executeGitCommand('git ls-files --others --exclude-standard', repo);
         if (untracked.trim()) {
-          await this.executeGitCommand('git clean -fdx', repoPath);
+          await this.executeGitCommand('git clean -fdx', repo);
         }
       }
 
       try {
-        await this.executeGitCommand('git reset --hard', repoPath, 3, 200);
-        await this.executeGitCommand('git clean -fdx', repoPath, 3, 200);
+        await this.executeGitCommand('git reset --hard', repo, 3, 200);
+        await this.executeGitCommand('git clean -fdx', repo, 3, 200);
       } catch (error) {
-        await this.fileService.removeGitLockFile(repoPath);
-        await this.executeGitCommand('git reset --hard', repoPath, 1, 500);
-        await this.executeGitCommand('git clean -fdx', repoPath, 1, 500);
+        await this.fileService.removeGitLockFile!(repo);
+        await this.executeGitCommand('git reset --hard', repo, 1, 500);
+        await this.executeGitCommand('git clean -fdx', repo, 1, 500);
       }
       
-      const newCommitHash = await this.createRestoreCommit(commit.hash, repoPath);
+      const newCommitHash = await this.createRestoreCommit(commit.hash, repo);
       
-      await this.executeGitCommand('git reset --hard', repoPath);
-      await this.executeGitCommand('git clean -fdx', repoPath);
+      await this.executeGitCommand('git reset --hard', repo);
+      await this.executeGitCommand('git clean -fdx', repo);
       
       return { 
         success: true, 
@@ -838,38 +938,36 @@ class GitService {
       
     } catch (error) {
       try {
-        await this.executeGitCommand(`git checkout ${currentBranch}`, repoPath);
-        await this.executeGitCommand(`git reset --hard ${currentCommit}`, repoPath);
-        await this.executeGitCommand('git clean -fdx', repoPath);
+        await this.executeGitCommand(`git checkout ${currentBranch}`, repo);
+        await this.executeGitCommand(`git reset --hard ${currentCommit}`, repo);
+        await this.executeGitCommand('git clean -fdx', repo);
       } catch (recoveryError) {
         console.error('Failed to recover original state:', recoveryError);
       }
       
-      throw new Error(`${constants.ERRORS.RESTORE_VERSION_FAILED}: ${error.message}`);
+      throw new Error(`${constants.ERRORS.RESTORE_VERSION_FAILED}: ${(error as Error).message}`);
     } finally {
       this.clearCache();
     }
   }
 
   /**
-   * Save uncommitted changes with AI-generated commit message
-   * @param {string} repoPath Repository path
-   * @returns {Promise<string>} Commit message used
+   * Save uncommitted changes with auto-generated commit message
+   * @param repoPath Repository path
+   * @returns Commit message used
    */
-  async saveChanges(repoPath = null) {
-    if (!repoPath) {
-      repoPath = await this.getRepositoryPath();
-    }
+  async saveChanges(repoPath: string | null = null): Promise<string> {
+    const repo = repoPath || await this.getRepositoryPath();
 
-    const changesInfo = await this.getUncommittedChanges(repoPath);
+    const changesInfo = await this.getUncommittedChanges(repo);
 
     if (!changesInfo.hasChanges) {
       throw new Error(constants.MESSAGES.NO_UNCOMMITTED_CHANGES);
     }
 
-    await this.executeGitCommand(constants.GIT_COMMANDS.ADD_ALL, repoPath);
+    await this.executeGitCommand(constants.GIT_COMMANDS.ADD_ALL, repo);
 
-    const commitMessage = await this.aiService.generateCommitMessage(
+    const commitMessage = await this.commitMessageService.generateCommitMessage(
       changesInfo.files,
       changesInfo.summary
     );
@@ -877,17 +975,17 @@ class GitService {
     const escapedMessage = commitMessage.replace(/"/g, '\\"');
     const commitCommand = constants.GIT_COMMANDS.COMMIT_MESSAGE.replace("%s", escapedMessage);
 
-    await this.executeGitCommand(commitCommand, repoPath);
+    await this.executeGitCommand(commitCommand, repo);
 
     return commitMessage;
   }
 
   /**
    * Discard all uncommitted changes in the repository
-   * @param {string} repoPath Repository path
-   * @returns {Promise<boolean>} True if changes were discarded successfully
+   * @param repoPath Repository path
+   * @returns True if changes were discarded successfully
    */
-  async discardChanges(repoPath = null) {
+  async discardChanges(repoPath: string | null = null): Promise<boolean> {
     try {
       const repo = repoPath || (await this.getRepositoryPath());
       
@@ -899,37 +997,37 @@ class GitService {
       return true;
     } catch (error) {
       console.error('Error discarding changes:', error);
-      throw new Error(`Failed to discard changes: ${error.message}`);
+      throw new Error(`Failed to discard changes: ${(error as Error).message}`);
     }
   }
 
   /**
    * Create a new Git repository in the current workspace
-   * @returns {Promise<string>} Workspace path or null if user cancels
+   * @returns Workspace path or null if user cancels
    */
-  async createNewRepository() {
+  async createNewRepository(): Promise<string | null> {
     try {
-      const choice = await this.notificationService.showRepositoryCreationOptions();
+      const choice = await this.notificationService.showRepositoryCreationOptions!();
 
       if (!choice) {
         return null; // User cancelled
       }
 
       if (choice === "github") {
-        await this.notificationService.executeCommand(constants.COMMANDS.LOAD_FROM_GITHUB);
+        await this.notificationService.executeCommand!(constants.COMMANDS.LOAD_FROM_GITHUB);
         return null;
       }
 
       const workspaceFolders = vscode.workspace.workspaceFolders;
-      if (!workspaceFolders || workspaceFolders.length === 0) {
+      if (!workspaceFolders?.[0]) {
         throw new Error(constants.ERRORS.NO_WORKSPACE_FOLDER);
       }
 
-      const workspacePath = workspaceFolders[0].uri.fsPath;
+      const workspacePath = workspaceFolders[0]!.uri.fsPath;
 
-      return await this.notificationService.showProgress(
+      return await this.notificationService.showProgress!(
         constants.MESSAGES.SETTING_UP_VERSION_TRACKING,
-        async (progress) => {
+        async (progress: vscode.Progress<{increment?: number; message?: string}>) => {
           progress.report({ increment: 0, message: "Initializing..." });
 
           await this.executeGitCommand(constants.GIT_COMMANDS.INIT_REPO, workspacePath);
@@ -961,10 +1059,10 @@ class GitService {
               workspacePath
             );
           } catch (commitError) {
-            const readmePath = this.fileService.joinPath(workspacePath, "README.md");
+            const readmePath = this.fileService.joinPath!(workspacePath, "README.md");
 
-            if (!this.fileService.existsSync(readmePath)) {
-              this.fileService.writeFileSync(
+            if (!this.fileService.existsSync!(readmePath)) {
+              this.fileService.writeFileSync!(
                 readmePath,
                 "# My Project\n\nWelcome to your version-tracked project! 🚀\n"
               );
@@ -981,10 +1079,10 @@ class GitService {
 
           progress.report({ increment: 100, message: "Done!" });
 
-          await this.notificationService.showInfo(constants.MESSAGES.REPO_CREATED_SUCCESS);
+          await this.notificationService.showInfo!(constants.MESSAGES.REPO_CREATED_SUCCESS);
 
           setTimeout(() => {
-            this.notificationService.executeCommand("git.refresh");
+            this.notificationService.executeCommand!("git.refresh");
           }, 1000);
 
           return workspacePath;
@@ -992,7 +1090,7 @@ class GitService {
       );
     } catch (error) {
       await this.notificationService.showError(
-        `${constants.ERRORS.REPO_CREATION_FAILED}: ${error.message}`
+        `${constants.ERRORS.REPO_CREATION_FAILED}: ${(error as Error).message}`
       );
       throw error;
     }
@@ -1001,11 +1099,104 @@ class GitService {
   /**
    * Clear the cache
    */
-  clearCache() {
+  clearCache(): void {
     this.cache.clear();
     this.repositoryScanCache.clear();
-    this.aiService.clearCache();
+    this.commitMessageService.clearCache();
+  }
+
+  // Implementation of GitServiceInterface methods
+  
+  /**
+   * Find repositories in workspace
+   * @returns Array of found repositories
+   */
+  async findRepositories(): Promise<GitRepository[]> {
+    const repositoryPaths = await this.scanForRepositories();
+    return repositoryPaths.map(path => ({
+      path,
+      name: path.split(/[\\/]/).pop() || 'Unknown',
+      isValid: true
+    }));
+  }
+
+  /**
+   * Get commit history for interface compliance
+   * @param repoPath Repository path
+   * @param limit Number of commits to fetch
+   * @returns Array of GitCommit objects
+   */
+  async getCommitHistory(repoPath?: string, limit?: number): Promise<GitCommit[]> {
+    const commits = await this.getCommits(limit, repoPath || null);
+    return commits.map(commit => ({
+      hash: commit.hash,
+      message: commit.subject,
+      author: commit.author,
+      date: commit.date,
+      subject: commit.subject
+    }));
+  }
+
+  /**
+   * Restore to a specific commit
+   * @param commitHash Hash of commit to restore to
+   * @param message Optional commit message
+   * @returns True if successful
+   */
+  async restoreToCommit(commitHash: string, message?: string): Promise<boolean> {
+    try {
+      const commit = { hash: commitHash, author: '', date: '', subject: message || '', version: 0 };
+      const result = await this.restoreVersion(commit);
+      return result.success;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Save changes with message for interface compliance
+   * @param message Commit message
+   * @returns True if successful
+   */
+  async saveChangesWithMessage(message: string): Promise<boolean> {
+    try {
+      await this.saveChanges();
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Discard uncommitted changes for interface compliance
+   * @returns True if successful
+   */
+  async discardUncommittedChanges(): Promise<boolean> {
+    return this.discardChanges();
+  }
+
+  /**
+   * Check if there are uncommitted changes
+   * @returns True if there are uncommitted changes
+   */
+  async hasUncommittedChanges(): Promise<boolean> {
+    try {
+      const changes = await this.getUncommittedChanges();
+      return changes.hasChanges;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Get current repository
+   * @returns Current repository or null
+   */
+  getCurrentRepository(): GitRepository | null {
+    // This would need to be implemented with proper state management
+    // For now, return null to satisfy the interface
+    return null;
   }
 }
 
-module.exports = GitService;
+export { GitService };

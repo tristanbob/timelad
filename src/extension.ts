@@ -1,13 +1,12 @@
-const vscode = require("vscode");
-const GitHistoryWebviewProvider = require("./providers/GitHistoryWebviewProvider");
-const GitCommands = require("./commands/gitCommands");
-const constants = require("./constants");
+import * as vscode from 'vscode';
+import { GitHistoryWebviewProvider } from './providers/GitHistoryWebviewProvider';
+import { GitCommands } from './commands/gitCommands';
+import * as constants from './constants';
 
 /**
  * Extension activation function
- * @param {vscode.ExtensionContext} context VS Code extension context
  */
-function activate(context) {
+export function activate(context: vscode.ExtensionContext): void {
   console.log(`${constants.EXTENSION_NAME} is now active!`);
 
   // Alpha release warnings
@@ -30,12 +29,12 @@ function activate(context) {
   );
 
   // Create a disposable for the provider's internal resources
-  const providerDisposable = {
+  const providerDisposable: vscode.Disposable = {
     dispose: () => gitHistoryProvider.dispose(),
   };
 
   // Register all commands
-  const commandDisposables = [
+  const commandDisposables: vscode.Disposable[] = [
     // Refresh command for the TimeLad view (used by native refresh button)
     vscode.commands.registerCommand(
       constants.COMMANDS.REFRESH_GIT_HISTORY,
@@ -53,7 +52,7 @@ function activate(context) {
     // Public commands (exposed in command palette)
     vscode.commands.registerCommand(
       constants.COMMANDS.RESTORE_VERSION,
-      (commit, repoPath) => gitCommands.restoreVersion(commit, repoPath)
+      (commit: any, repoPath: string) => gitCommands.restoreVersion(commit, repoPath)
     ),
     vscode.commands.registerCommand(constants.COMMANDS.SAVE_CHANGES, () =>
       gitCommands.saveChanges()
@@ -100,11 +99,6 @@ function activate(context) {
 /**
  * Extension deactivation function
  */
-function deactivate() {
+export function deactivate(): void {
   console.log(`${constants.EXTENSION_NAME} extension deactivated`);
 }
-
-module.exports = {
-  activate,
-  deactivate,
-};

@@ -3,7 +3,30 @@
     "allow": [
       "Bash(npm run test:unit:*)",
       "Bash(npm test)",
-      "Bash(npm run lint)"
+      "Bash(npm run lint)",
+      "Bash(npm install:*)",
+      "Bash(npm run test:*)",
+      "Bash(git add:*)",
+      "Bash(npm run compile:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run:*)",
+      "Bash(npx tsc:*)",
+      "Bash(grep:*)",
+      "Bash(cp:*)",
+      "Bash(copy srcservicesAICommitMessageService.js outservices)",
+      "Bash(copy srcservicesGitHubService.js outservices)",
+      "Bash(mkdir:*)",
+      "Bash(find:*)",
+      "Bash(npx mocha:*)",
+      "Bash(rm:*)",
+      "Bash(mv:*)",
+      "Bash(xcopy:*)",
+      "Bash(robocopy:*)",
+      "Bash(copy:*)",
+      "Bash(for:*)",
+      "Bash(do cp \"$file\" \"C:\\Users\\trist\\GitHub\\tristanbob\\timelad\\test\\suite\"\")",
+      "Bash(done)",
+      "Bash(mocha:*)"
     ],
     "deny": []
   }

@@ -3,7 +3,7 @@ const sinon = require('sinon');
 const TestUtils = require('./testUtils');
 
 // Import the new services
-const AICommitMessageService = require('../services/AICommitMessageService');
+const CommitMessageService = require('../services/CommitMessageService');
 const NotificationService = require('../services/NotificationService');
 const FileOperationsService = require('../services/FileOperationsService');
 const GitService = require('../services/GitService');
@@ -19,24 +19,24 @@ describe('Refactored Services', () => {
     sandbox.restore();
   });
 
-  describe('AICommitMessageService', () => {
-    let aiService;
+  describe('CommitMessageService', () => {
+    let commitMessageService;
 
     beforeEach(() => {
-      aiService = new AICommitMessageService();
+      commitMessageService = new CommitMessageService();
     });
 
     afterEach(() => {
-      aiService.clearCache();
+      commitMessageService.clearCache();
     });
 
-    it('should generate fallback commit message for new files', async () => {
+    it('should generate rule-based commit message for new files', async () => {
       const files = [
         { fileName: 'test.js', type: 'added' }
       ];
       const summary = '1 file changed, 10 insertions(+)';
 
-      const message = await aiService.generateCommitMessage(files, summary);
+      const message = await commitMessageService.generateCommitMessage(files, summary);
       
       assert.ok(message.includes('feat'));
       assert.ok(message.includes('test.js'));
@@ -44,21 +44,21 @@ describe('Refactored Services', () => {
 
     it('should determine correct commit type for JavaScript files', () => {
       const fileTypes = new Set(['js', 'ts']);
-      const commitType = aiService.determineCommitType(fileTypes);
+      const commitType = commitMessageService.determineCommitType(fileTypes);
       
       assert.strictEqual(commitType, 'feat');
     });
 
     it('should determine correct commit type for CSS files', () => {
       const fileTypes = new Set(['css', 'scss']);
-      const commitType = aiService.determineCommitType(fileTypes);
+      const commitType = commitMessageService.determineCommitType(fileTypes);
       
       assert.strictEqual(commitType, 'style');
     });
 
     it('should determine correct commit type for documentation files', () => {
       const fileTypes = new Set(['md', 'txt']);
-      const commitType = aiService.determineCommitType(fileTypes);
+      const commitType = commitMessageService.determineCommitType(fileTypes);
       
       assert.strictEqual(commitType, 'docs');
     });
@@ -68,29 +68,36 @@ describe('Refactored Services', () => {
       const summary = 'test summary';
 
       // First call
-      const message1 = await aiService.generateCommitMessage(files, summary);
+      const message1 = await commitMessageService.generateCommitMessage(files, summary);
       
       // Second call should return cached result
-      const message2 = await aiService.generateCommitMessage(files, summary);
+      const message2 = await commitMessageService.generateCommitMessage(files, summary);
       
       assert.strictEqual(message1, message2);
       
-      const stats = aiService.getCacheStats();
+      const stats = commitMessageService.getCacheStats();
       assert.strictEqual(stats.size, 1);
     });
 
-    it('should build proper commit prompt', () => {
+    it('should generate subject for single file', () => {
+      const files = [{ fileName: 'test.js', type: 'added' }];
+      const changeTypes = new Set(['add']);
+      
+      const subject = commitMessageService.generateSubject(files, changeTypes);
+      
+      assert.strictEqual(subject, 'add test.js');
+    });
+
+    it('should generate subject for multiple files', () => {
       const files = [
         { fileName: 'test.js', type: 'modified' },
         { fileName: 'style.css', type: 'added' }
       ];
-      const summary = '2 files changed';
-
-      const prompt = aiService.buildCommitPrompt(files, summary);
+      const changeTypes = new Set(['update', 'add']);
       
-      assert.ok(prompt.includes('modified: test.js'));
-      assert.ok(prompt.includes('added: style.css'));
-      assert.ok(prompt.includes('2 files changed'));
+      const subject = commitMessageService.generateSubject(files, changeTypes);
+      
+      assert.strictEqual(subject, 'add 2 files');
     });
   });
 
@@ -220,7 +227,7 @@ describe('Refactored Services', () => {
     it('should initialize with injected services', () => {
       assert.strictEqual(gitService.notificationService, mockNotificationService);
       assert.strictEqual(gitService.fileService, mockFileService);
-      assert.ok(gitService.aiService);
+      assert.ok(gitService.commitMessageService);
     });
 
     it('should handle repository not found error', async () => {
@@ -242,7 +249,7 @@ describe('Refactored Services', () => {
       gitService.cache.set('test', 'value');
       gitService.repositoryScanCache.set('test', 'value');
       
-      const clearCacheSpy = sandbox.spy(gitService.aiService, 'clearCache');
+      const clearCacheSpy = sandbox.spy(gitService.commitMessageService, 'clearCache');
       
       gitService.clearCache();
       
